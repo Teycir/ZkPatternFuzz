@@ -170,7 +170,7 @@ impl FuzzingEngine {
                     })
                 } else {
                     chunk
-                        .par_iter()
+                        .iter()
                         .enumerate()
                         .map(|(offset, tc)| {
                             let idx = chunk_start + offset;

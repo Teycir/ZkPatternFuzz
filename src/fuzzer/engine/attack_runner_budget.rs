@@ -76,26 +76,45 @@ impl FuzzingEngine {
         let configured = configured.max(floor);
         let additional = &self.config.campaign.parameters.additional;
         let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
+        let hard_cap = Self::additional_usize(additional, "attack_units_hard_cap")
+            .or_else(|| {
+                std::env::var("ZK_FUZZER_ATTACK_UNITS_HARD_CAP")
+                    .ok()
+                    .and_then(|raw| raw.trim().parse::<usize>().ok())
+            })
+            .unwrap_or(250_000)
+            .max(floor);
+
+        let mut bounded = configured.min(hard_cap).max(floor);
+        if bounded < configured {
+            tracing::warn!(
+                "Global attack unit cap applied: {} {} -> {} (hard_cap={})",
+                label,
+                configured,
+                bounded,
+                hard_cap
+            );
+        }
 
         let Some((cap, iterations, multiplier)) =
             deterministic_attack_cap(additional, evidence_mode, floor, per_attack_cap_key)
         else {
-            return configured;
+            return bounded;
         };
 
-        let effective = configured.min(cap).max(floor);
-        if effective < configured {
+        bounded = bounded.min(cap).max(floor);
+        if bounded < configured {
             tracing::warn!(
                 "Deterministic attack budget applied: {} {} -> {} (cap={}, iterations={}, multiplier={}, key={})",
                 label,
                 configured,
-                effective,
+                bounded,
                 cap,
                 iterations,
                 multiplier,
                 per_attack_cap_key
             );
         }
-        effective
+        bounded
     }
 }

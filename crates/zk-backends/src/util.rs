@@ -2,15 +2,19 @@ use anyhow::{Context, Result};
 use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 #[cfg(not(unix))]
 use std::process::Child;
 use std::process::{Command, Output, Stdio};
-use std::sync::mpsc;
+use std::thread;
+use std::thread::JoinHandle;
 use std::time::Duration;
-#[cfg(not(unix))]
 use std::time::Instant;
+
+const MAX_PIPE_CAPTURE_BYTES: usize = 8 * 1024 * 1024;
+const PIPE_CAPTURE_TRUNCATED_NOTICE: &str =
+    "\n[zk-fuzzer] external command output truncated to 8 MiB per stream\n";
 
 fn truncate_for_diagnostics(text: &str, max_chars: usize) -> String {
     let trimmed = text.trim();
@@ -97,6 +101,69 @@ pub(crate) fn timeout_from_env(var: &str, default_secs: u64) -> Duration {
             fallback
         }
     }
+}
+
+#[derive(Debug)]
+struct PipeCapture {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+fn read_pipe_with_cap<R: Read>(mut reader: R) -> Result<PipeCapture> {
+    let mut bytes = Vec::new();
+    let mut scratch = [0u8; 8192];
+    let mut truncated = false;
+
+    loop {
+        let read = reader.read(&mut scratch)?;
+        if read == 0 {
+            break;
+        }
+
+        let remaining = MAX_PIPE_CAPTURE_BYTES.saturating_sub(bytes.len());
+        if remaining > 0 {
+            let keep = remaining.min(read);
+            bytes.extend_from_slice(&scratch[..keep]);
+            if keep < read {
+                truncated = true;
+            }
+        } else {
+            truncated = true;
+        }
+    }
+
+    Ok(PipeCapture { bytes, truncated })
+}
+
+fn spawn_pipe_reader<R>(reader: R) -> JoinHandle<Result<PipeCapture>>
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || read_pipe_with_cap(reader))
+}
+
+fn join_pipe_reader(handle: Option<JoinHandle<Result<PipeCapture>>>) -> Result<PipeCapture> {
+    match handle {
+        Some(handle) => {
+            let result = handle
+                .join()
+                .map_err(|_| anyhow::anyhow!("failed to join command output reader thread"))?;
+            result
+        }
+        None => Ok(PipeCapture {
+            bytes: Vec::new(),
+            truncated: false,
+        }),
+    }
+}
+
+fn finalize_pipe_capture(stdout: PipeCapture, mut stderr: PipeCapture) -> (Vec<u8>, Vec<u8>) {
+    if stdout.truncated || stderr.truncated {
+        stderr
+            .bytes
+            .extend_from_slice(PIPE_CAPTURE_TRUNCATED_NOTICE.as_bytes());
+    }
+    (stdout.bytes, stderr.bytes)
 }
 
 pub(crate) fn parse_command_candidates(raw: Option<&str>) -> Vec<String> {
@@ -270,64 +337,55 @@ pub(crate) fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<O
     let spawn_cmd = sandboxed_cmd.as_mut().unwrap_or(cmd);
     prepare_child_process_group(spawn_cmd);
 
-    let child = spawn_cmd
+    let mut child = spawn_cmd
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .with_context(|| "Failed to spawn external command")?;
+    let stdout_reader = child.stdout.take().map(spawn_pipe_reader);
+    let stderr_reader = child.stderr.take().map(spawn_pipe_reader);
+    let deadline = Instant::now() + timeout;
 
-    #[cfg(unix)]
-    {
-        let child_id = child.id();
-        let (tx, rx) = mpsc::sync_channel(1);
-        std::thread::spawn(move || {
-            let _ = tx.send(child.wait_with_output());
-        });
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .context("Failed waiting on external command")?
+        {
+            let stdout_capture = join_pipe_reader(stdout_reader)?;
+            let stderr_capture = join_pipe_reader(stderr_reader)?;
+            let (stdout, stderr) = finalize_pipe_capture(stdout_capture, stderr_capture);
+            return Ok(Output {
+                status,
+                stdout,
+                stderr,
+            });
+        }
 
-        match rx.recv_timeout(timeout) {
-            Ok(output) => output.context("Failed collecting external command output"),
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                if let Err(e) = kill_process_group_by_pid(child_id) {
+        if Instant::now() >= deadline {
+            #[cfg(unix)]
+            {
+                if let Err(e) = kill_process_group_by_pid(child.id()) {
                     tracing::warn!("Failed to kill timed out process subtree: {}", e);
                 }
-                // Give the waiter a short grace period to observe process termination.
-                let _ = rx.recv_timeout(Duration::from_secs(1));
-                anyhow::bail!("Command timed out after {:?}", timeout);
             }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                anyhow::bail!("External command waiter disconnected unexpectedly")
-            }
-        }
-    }
-
-    #[cfg(not(unix))]
-    {
-        let mut child = child;
-        let start = Instant::now();
-        loop {
-            if let Some(_status) = child
-                .try_wait()
-                .context("Failed waiting on external command")?
+            #[cfg(not(unix))]
             {
-                return child
-                    .wait_with_output()
-                    .context("Failed collecting external command output");
-            }
-
-            if start.elapsed() >= timeout {
                 if let Err(e) = kill_child_tree(&mut child) {
                     tracing::warn!("Failed to kill timed out process subtree: {}", e);
                 }
-                if let Err(e) = child.wait() {
-                    tracing::warn!("Failed to wait for timed out process: {}", e);
-                }
-                anyhow::bail!("Command timed out after {:?}", timeout);
             }
 
-            // Non-Unix fallback keeps bounded polling because `killpg` is unavailable.
-            std::thread::sleep(Duration::from_millis(25));
+            if let Err(e) = child.wait() {
+                tracing::warn!("Failed to wait for timed out process: {}", e);
+            }
+            let _stdout = join_pipe_reader(stdout_reader)?;
+            let _stderr = join_pipe_reader(stderr_reader)?;
+            anyhow::bail!("Command timed out after {:?}", timeout);
         }
+
+        // Keep polling bounded while reader threads drain pipes continuously.
+        thread::sleep(Duration::from_millis(25));
     }
 }
 

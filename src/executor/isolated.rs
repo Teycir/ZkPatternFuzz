@@ -497,12 +497,15 @@ impl IsolatedExecutor {
         let payload = serde_json::to_vec(request)?;
         let response_path = make_response_path()?;
 
-        let mut child = Command::new(&self.worker_exe)
+        let mut command = Command::new(&self.worker_exe);
+        command
             .arg("exec-worker")
             .env("ZK_FUZZER_EXEC_RESPONSE", &response_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::null());
+        apply_child_resource_limits(&mut command, self.config.clone());
+        let mut child = command
             .spawn()
             .with_context(|| format!("Failed to spawn exec worker at {:?}", self.worker_exe))?;
 
@@ -536,6 +539,46 @@ impl IsolatedExecutor {
         Ok(response)
     }
 }
+
+#[cfg(unix)]
+fn apply_child_resource_limits(cmd: &mut Command, config: IsolationConfig) {
+    use std::os::unix::process::CommandExt;
+
+    let memory_limit_bytes = config.memory_limit_bytes;
+    let cpu_limit_secs = config.cpu_limit_secs;
+
+    // SAFETY: `pre_exec` runs in the forked child immediately before exec.
+    // The closure only invokes async-signal-safe libc syscalls (`setrlimit`) and
+    // returns OS errors directly without touching shared process state.
+    unsafe {
+        cmd.pre_exec(move || {
+            if memory_limit_bytes > 0 {
+                let limit = libc::rlimit {
+                    rlim_cur: memory_limit_bytes as libc::rlim_t,
+                    rlim_max: memory_limit_bytes as libc::rlim_t,
+                };
+                if libc::setrlimit(libc::RLIMIT_AS, &limit) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+            }
+
+            if cpu_limit_secs > 0 {
+                let limit = libc::rlimit {
+                    rlim_cur: cpu_limit_secs as libc::rlim_t,
+                    rlim_max: cpu_limit_secs as libc::rlim_t,
+                };
+                if libc::setrlimit(libc::RLIMIT_CPU, &limit) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+            }
+
+            Ok(())
+        });
+    }
+}
+
+#[cfg(not(unix))]
+fn apply_child_resource_limits(_cmd: &mut Command, _config: IsolationConfig) {}
 
 impl CircuitExecutor for IsolatedExecutor {
     fn framework(&self) -> Framework {

@@ -40,6 +40,7 @@ impl FuzzingEngine {
         let mut wall_clock_timed_out = false;
         for (attack_idx, attack_config) in self.config.attacks.clone().into_iter().enumerate() {
             let attack_phase_index = 1u64.saturating_add(attack_idx as u64);
+
             if self.wall_clock_timeout_reached() {
                 wall_clock_timed_out = true;
                 tracing::warn!(

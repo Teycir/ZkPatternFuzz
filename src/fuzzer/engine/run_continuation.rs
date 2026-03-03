@@ -83,7 +83,7 @@ impl FuzzingEngine {
                 Some(0.0),
                 serde_json::json!({}),
             );
-        } else if iterations > 0 {
+        } else if iterations > 0 && (wall_clock_timed_out || self.wall_clock_timeout_reached()) {
             tracing::warn!(
                 "Skipping continuous fuzzing phase: global wall-clock timeout already reached"
             );

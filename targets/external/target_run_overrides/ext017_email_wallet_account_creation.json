@@ -1,0 +1,13 @@
+{
+  "run_overrides": {
+    "batch_jobs": 1,
+    "workers": 1,
+    "iterations": 40,
+    "timeout": 900,
+    "env": {
+      "NODE_OPTIONS": "--max_old_space_size=8192",
+      "ZKF_PTAU_PATH": "/home/teycir/Repos/ZkPatternFuzz/bins/ptau/pot23_final.ptau",
+      "ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS": 900
+    }
+  }
+}

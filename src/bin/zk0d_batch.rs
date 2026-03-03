@@ -27,6 +27,7 @@ const DEFAULT_HIGH_CONFIDENCE_MIN_ORACLES: usize = 2;
 const DEFAULT_REGISTRY_PATH: &str = "targets/fuzzer_registry.yaml";
 const DEV_REGISTRY_PATH: &str = "targets/fuzzer_registry.dev.yaml";
 const PROD_REGISTRY_PATH: &str = "targets/fuzzer_registry.prod.yaml";
+const DEFAULT_TARGET_OVERRIDES_INDEX_PATH: &str = "targets/zk0d_matrix_external_manual.yaml";
 
 #[derive(Parser, Debug)]
 #[command(name = "zk0d_batch")]
@@ -59,6 +60,14 @@ struct Args {
     /// Target circuit path used for all selected templates
     #[arg(long)]
     target_circuit: Option<String>,
+
+    /// Matrix/index file used to auto-apply per-target run_overrides_file entries
+    #[arg(long)]
+    target_overrides_index: Option<String>,
+
+    /// Disable automatic target override detection/application
+    #[arg(long, default_value_t = false)]
+    disable_target_overrides: bool,
 
     /// Main component used for all selected templates
     #[arg(long, default_value = "main")]
@@ -182,6 +191,28 @@ struct CollectionEntry {
     templates: Vec<String>,
 }
 
+#[derive(Debug, Deserialize, Default, Clone)]
+struct TargetRunOverrides {
+    #[serde(default)]
+    batch_jobs: Option<usize>,
+    #[serde(default)]
+    workers: Option<usize>,
+    #[serde(default)]
+    iterations: Option<u64>,
+    #[serde(default)]
+    timeout: Option<u64>,
+    #[serde(default)]
+    env: BTreeMap<String, serde_yaml::Value>,
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedTargetRunOverrides {
+    target_name: String,
+    target_circuit: PathBuf,
+    overrides_path: PathBuf,
+    overrides: TargetRunOverrides,
+}
+
 #[derive(Debug, Clone)]
 struct TemplateInfo {
     file_name: String,
@@ -204,6 +235,7 @@ struct ScanRunConfig<'a> {
     timeout: u64,
     scan_run_root: Option<&'a str>,
     scan_output_root: &'a Path,
+    env_overrides: &'a BTreeMap<String, String>,
     dry_run: bool,
     artifacts_root: &'a Path,
 }
@@ -512,6 +544,209 @@ fn expand_env_placeholders(input: &str) -> String {
 
 fn has_unresolved_env_placeholder(input: &str) -> bool {
     input.contains("${") || input.contains('$')
+}
+
+fn yaml_key(name: &str) -> serde_yaml::Value {
+    serde_yaml::Value::String(name.to_string())
+}
+
+fn env_override_value_to_string(value: &serde_yaml::Value) -> anyhow::Result<Option<String>> {
+    let rendered = match value {
+        serde_yaml::Value::Null => return Ok(None),
+        serde_yaml::Value::Bool(v) => {
+            if *v {
+                "1".to_string()
+            } else {
+                "0".to_string()
+            }
+        }
+        serde_yaml::Value::Number(v) => v.to_string(),
+        serde_yaml::Value::String(v) => v.clone(),
+        other => anyhow::bail!(
+            "Unsupported target override env value type: {:?}. Use scalar string/number/bool.",
+            other
+        ),
+    };
+    Ok(Some(rendered))
+}
+
+fn normalize_match_path(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn paths_match(lhs: &Path, rhs: &Path) -> bool {
+    let lhs_norm = normalize_match_path(lhs);
+    let rhs_norm = normalize_match_path(rhs);
+    if lhs_norm == rhs_norm {
+        return true;
+    }
+
+    let lhs_abs = if lhs.is_absolute() {
+        lhs.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(lhs)
+    };
+    let rhs_abs = if rhs.is_absolute() {
+        rhs.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(rhs)
+    };
+    if lhs_abs == rhs_abs {
+        return true;
+    }
+
+    lhs_norm.ends_with(rhs) || rhs_norm.ends_with(lhs)
+}
+
+fn load_target_run_overrides(path: &Path) -> anyhow::Result<TargetRunOverrides> {
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("Failed reading target run overrides '{}'", path.display()))?;
+    let mut parsed: serde_yaml::Value = serde_yaml::from_str(&raw)
+        .with_context(|| format!("Failed parsing target run overrides '{}'", path.display()))?;
+
+    if let Some(map) = parsed.as_mapping_mut() {
+        if let Some(inner) = map.get(yaml_key("run_overrides")) {
+            parsed = inner.clone();
+        } else if let Some(inner) = map.get(yaml_key("run")) {
+            parsed = inner.clone();
+        } else if let Some(inner) = map.get(yaml_key("config")) {
+            parsed = inner.clone();
+        }
+    }
+
+    serde_yaml::from_value(parsed).with_context(|| {
+        format!(
+            "Failed decoding run overrides from '{}'; expected keys like batch_jobs/workers/iterations/timeout/env",
+            path.display()
+        )
+    })
+}
+
+fn resolve_target_run_overrides(
+    index_path: &Path,
+    target_circuit: &Path,
+    framework: &str,
+) -> anyhow::Result<Option<ResolvedTargetRunOverrides>> {
+    let raw = fs::read_to_string(index_path).with_context(|| {
+        format!(
+            "Failed reading target overrides index '{}'",
+            index_path.display()
+        )
+    })?;
+    let parsed: serde_yaml::Value = serde_yaml::from_str(&raw).with_context(|| {
+        format!(
+            "Failed parsing target overrides index '{}'",
+            index_path.display()
+        )
+    })?;
+    let targets = parsed
+        .as_mapping()
+        .and_then(|map| map.get(yaml_key("targets")))
+        .and_then(|value| value.as_sequence())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Target overrides index '{}' is missing a top-level 'targets' array",
+                index_path.display()
+            )
+        })?;
+
+    let index_parent = index_path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+    let mut matched: Option<ResolvedTargetRunOverrides> = None;
+
+    for entry in targets {
+        let Some(map) = entry.as_mapping() else {
+            continue;
+        };
+        let target_name = map
+            .get(yaml_key("name"))
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let target_circuit_raw = map
+            .get(yaml_key("target_circuit"))
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let framework_raw = map
+            .get(yaml_key("framework"))
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let run_overrides_file_raw = map
+            .get(yaml_key("run_overrides_file"))
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+
+        if run_overrides_file_raw.is_empty() || target_circuit_raw.is_empty() {
+            continue;
+        }
+        if !framework_raw.is_empty() && !framework_raw.eq_ignore_ascii_case(framework) {
+            continue;
+        }
+
+        let matrix_target = PathBuf::from(expand_env_placeholders(&target_circuit_raw));
+        if !paths_match(&matrix_target, target_circuit) {
+            continue;
+        }
+
+        let run_overrides_file = PathBuf::from(expand_env_placeholders(&run_overrides_file_raw));
+        let overrides_path = if run_overrides_file.is_absolute() {
+            run_overrides_file
+        } else {
+            index_parent.join(run_overrides_file)
+        };
+        let overrides = load_target_run_overrides(&overrides_path)?;
+        let target_name = if target_name.is_empty() {
+            matrix_target.display().to_string()
+        } else {
+            target_name
+        };
+        let resolved = ResolvedTargetRunOverrides {
+            target_name,
+            target_circuit: matrix_target,
+            overrides_path,
+            overrides,
+        };
+
+        if let Some(existing) = &matched {
+            anyhow::bail!(
+                "Multiple target overrides matched '{}': '{}' and '{}'. Narrow your matrix entries.",
+                target_circuit.display(),
+                existing.target_name,
+                resolved.target_name
+            );
+        }
+        matched = Some(resolved);
+    }
+
+    Ok(matched)
+}
+
+fn collect_target_override_env(
+    overrides: &TargetRunOverrides,
+) -> anyhow::Result<BTreeMap<String, String>> {
+    let mut env_overrides = BTreeMap::new();
+    for (key, value) in &overrides.env {
+        if key.trim().is_empty() {
+            anyhow::bail!("Invalid target override env key: empty string");
+        }
+        if let Some(rendered) = env_override_value_to_string(value)? {
+            env_overrides.insert(key.clone(), rendered);
+        }
+    }
+    Ok(env_overrides)
 }
 
 fn validate_pattern_only_yaml(path: &Path) -> anyhow::Result<()> {
@@ -876,6 +1111,9 @@ fn run_scan(
             cmd.env(HALO2_TOOLCHAIN_CASCADE_LIMIT_ENV, cascade_limit.to_string());
         }
     }
+    for (key, value) in run_cfg.env_overrides {
+        cmd.env(key, value);
+    }
     cmd.arg("scan")
         .arg(&template.path)
         .arg("--family")
@@ -906,13 +1144,19 @@ fn run_scan(
     }
 
     if run_cfg.dry_run {
+        let env_prefix = run_cfg
+            .env_overrides
+            .iter()
+            .map(|(key, value)| format!(" {}={}", key, value))
+            .collect::<String>();
         let suffix_arg = if !validate_only {
             format!(" --output-suffix {}", output_suffix)
         } else {
             String::new()
         };
         println!(
-            "[DRY RUN] {}={} {}={} {}={} {} scan {} --family {} --target-circuit {} --main-component {} --framework {} --workers {} --seed {} --iterations {} --timeout {} --simple-progress{}{}",
+            "[DRY RUN]{} {}={} {}={} {}={} {} scan {} --family {} --target-circuit {} --main-component {} --framework {} --workers {} --seed {} --iterations {} --timeout {} --simple-progress{}{}",
+            env_prefix,
             SCAN_OUTPUT_ROOT_ENV,
             run_cfg.scan_output_root.display(),
             RUN_SIGNAL_DIR_ENV,
@@ -1669,6 +1913,65 @@ fn main() -> anyhow::Result<()> {
         );
     }
 
+    let mut effective_jobs = args.jobs;
+    let mut effective_workers = args.workers;
+    let mut effective_iterations = args.iterations;
+    let mut effective_timeout = args.timeout;
+    let mut target_env_overrides = BTreeMap::<String, String>::new();
+    let mut applied_target_overrides: Option<ResolvedTargetRunOverrides> = None;
+
+    if !args.disable_target_overrides {
+        let index_path_raw = args
+            .target_overrides_index
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TARGET_OVERRIDES_INDEX_PATH.to_string());
+        let index_path = PathBuf::from(&index_path_raw);
+
+        if index_path.exists() {
+            if let Some(resolved) =
+                resolve_target_run_overrides(&index_path, &target_circuit_path, &args.framework)?
+            {
+                if let Some(value) = resolved.overrides.batch_jobs {
+                    if value == 0 {
+                        anyhow::bail!(
+                            "Invalid batch_jobs=0 in target run overrides '{}'",
+                            resolved.overrides_path.display()
+                        );
+                    }
+                    effective_jobs = value;
+                }
+                if let Some(value) = resolved.overrides.workers {
+                    if value == 0 {
+                        anyhow::bail!(
+                            "Invalid workers=0 in target run overrides '{}'",
+                            resolved.overrides_path.display()
+                        );
+                    }
+                    effective_workers = value;
+                }
+                if let Some(value) = resolved.overrides.iterations {
+                    effective_iterations = value;
+                }
+                if let Some(value) = resolved.overrides.timeout {
+                    if value == 0 {
+                        anyhow::bail!(
+                            "Invalid timeout=0 in target run overrides '{}'",
+                            resolved.overrides_path.display()
+                        );
+                    }
+                    effective_timeout = value;
+                }
+                target_env_overrides = collect_target_override_env(&resolved.overrides)?;
+                applied_target_overrides = Some(resolved);
+            }
+        } else if args.target_overrides_index.is_some() {
+            anyhow::bail!(
+                "Target overrides index not found: '{}'",
+                index_path.display()
+            );
+        }
+    }
+
     let selected = resolve_selection(&args, &registry_file, &template_index, &by_collection)?;
 
     let mut selected_with_family: Vec<(TemplateInfo, Family)> = Vec::with_capacity(selected.len());
@@ -1708,12 +2011,13 @@ fn main() -> anyhow::Result<()> {
         target_circuit: &target_circuit,
         framework: &args.framework,
         main_component: &args.main_component,
-        workers: args.workers,
+        workers: effective_workers,
         seed: args.seed,
-        iterations: args.iterations,
-        timeout: args.timeout,
+        iterations: effective_iterations,
+        timeout: effective_timeout,
         scan_run_root: None,
         scan_output_root: &scan_output_root,
+        env_overrides: &target_env_overrides,
         dry_run: args.dry_run,
         artifacts_root: &artifacts_root,
     };
@@ -1736,7 +2040,29 @@ fn main() -> anyhow::Result<()> {
 
     use rayon::prelude::*;
 
-    let jobs = args.jobs.max(1);
+    if let Some(resolved) = &applied_target_overrides {
+        println!(
+            "Target overrides applied: target='{}' matrix_target='{}' file='{}' jobs={} workers={} iterations={} timeout={} env_keys={}",
+            resolved.target_name,
+            resolved.target_circuit.display(),
+            resolved.overrides_path.display(),
+            effective_jobs,
+            effective_workers,
+            effective_iterations,
+            effective_timeout,
+            if target_env_overrides.is_empty() {
+                "<none>".to_string()
+            } else {
+                target_env_overrides
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<String>>()
+                    .join(",")
+            }
+        );
+    }
+
+    let jobs = effective_jobs.max(1);
     println!(
         "Running {} templates in parallel (jobs={})",
         selected_with_family.len(),

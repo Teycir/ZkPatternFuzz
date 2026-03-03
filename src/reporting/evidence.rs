@@ -460,13 +460,97 @@ impl EvidenceGenerator {
             if let Some(fe) = inputs.get(i) {
                 // Convert to decimal string (Circom format)
                 let decimal = fe.to_decimal_string();
-                witness_obj.insert(input_spec.name.clone(), serde_json::Value::String(decimal));
+                Self::insert_witness_value(
+                    &mut witness_obj,
+                    &input_spec.name,
+                    serde_json::Value::String(decimal),
+                )?;
             }
         }
 
         let json = serde_json::Value::Object(witness_obj);
         std::fs::write(path, serde_json::to_string_pretty(&json)?)?;
         Ok(())
+    }
+
+    fn insert_witness_value(
+        root: &mut serde_json::Map<String, serde_json::Value>,
+        raw_name: &str,
+        value: serde_json::Value,
+    ) -> anyhow::Result<()> {
+        if let Some((base, indices)) = Self::parse_indexed_input_name(raw_name) {
+            if indices.is_empty() {
+                root.insert(base, value);
+                return Ok(());
+            }
+
+            let entry = root
+                .entry(base)
+                .or_insert_with(|| serde_json::Value::Array(Vec::new()));
+            Self::insert_array_value(entry, &indices, value, raw_name)?;
+            return Ok(());
+        }
+
+        root.insert(raw_name.to_string(), value);
+        Ok(())
+    }
+
+    fn parse_indexed_input_name(raw_name: &str) -> Option<(String, Vec<usize>)> {
+        let open = raw_name.find('[')?;
+        if open == 0 {
+            return None;
+        }
+        let base = raw_name[..open].to_string();
+        let mut rest = &raw_name[open..];
+        let mut indices = Vec::new();
+
+        while !rest.is_empty() {
+            if !rest.starts_with('[') {
+                return None;
+            }
+            let close = rest.find(']')?;
+            let idx_str = &rest[1..close];
+            let index = idx_str.parse::<usize>().ok()?;
+            indices.push(index);
+            rest = &rest[(close + 1)..];
+        }
+
+        Some((base, indices))
+    }
+
+    fn insert_array_value(
+        slot: &mut serde_json::Value,
+        indices: &[usize],
+        value: serde_json::Value,
+        raw_name: &str,
+    ) -> anyhow::Result<()> {
+        if indices.is_empty() {
+            *slot = value;
+            return Ok(());
+        }
+
+        let idx = indices[0];
+        let array = slot.as_array_mut().ok_or_else(|| {
+            anyhow::anyhow!(
+                "input '{}' conflicts with existing non-array witness entry",
+                raw_name
+            )
+        })?;
+
+        if array.len() <= idx {
+            array.resize(idx + 1, serde_json::Value::Null);
+        }
+
+        if indices.len() == 1 {
+            array[idx] = value;
+            return Ok(());
+        }
+
+        if array[idx].is_null() {
+            array[idx] = serde_json::Value::Array(Vec::new());
+        }
+
+        Self::insert_array_value(&mut array[idx], &indices[1..], value, raw_name)
     }
 
     /// Generate reproduction script

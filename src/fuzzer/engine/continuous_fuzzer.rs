@@ -45,6 +45,7 @@ impl FuzzingEngine {
         let mut failed_count = 0u64;
         let mut sample_errors: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut last_progress_write = Instant::now();
+        let mut stop_reason: Option<&'static str> = None;
 
         while completed < iterations {
             // Check run-level wall-clock timeout (shared across setup + attacks + continuous).
@@ -53,6 +54,7 @@ impl FuzzingEngine {
                     "Global wall-clock timeout reached after {} continuous iterations",
                     completed
                 );
+                stop_reason = Some("wall_clock_timeout");
                 break;
             }
 
@@ -63,6 +65,7 @@ impl FuzzingEngine {
                         "Continuous fuzzing timeout reached after {} iterations",
                         completed
                     );
+                    stop_reason = Some("phase_timeout");
                     break;
                 }
             }
@@ -156,6 +159,7 @@ impl FuzzingEngine {
                         "hangs": hang_count,
                         "crashes": crash_count,
                         "elapsed_seconds": start.elapsed().as_secs_f64(),
+                        "stop_reason": stop_reason,
                     }),
                 );
                 last_progress_write = Instant::now();
@@ -222,6 +226,7 @@ impl FuzzingEngine {
                 "hangs": hang_count,
                 "crashes": crash_count,
                 "elapsed_seconds": start.elapsed().as_secs_f64(),
+                "stop_reason": stop_reason,
             }),
         );
 

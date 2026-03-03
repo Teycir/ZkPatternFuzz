@@ -310,3 +310,18 @@ targets:
       framework_prior:
         key: noir
         known_issue_count: 0
+  - name: ext017_email_wallet_account_creation
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/email-wallet/packages/circuits/src/account_creation.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+    run_overrides_file: external/target_run_overrides/ext017_email_wallet_account_creation.json
+
+    intel:
+      dataset: zkbugs
+      source_root: /home/teycir/Documents/ZkDatasets
+      synced_on: '2026-02-25'
+      framework_prior:
+        key: circom
+        known_issue_count: 45

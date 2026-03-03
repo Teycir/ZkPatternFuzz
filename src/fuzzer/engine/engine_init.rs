@@ -58,6 +58,27 @@ impl FuzzingEngine {
     pub fn new(mut config: FuzzConfig, seed: Option<u64>, workers: usize) -> anyhow::Result<Self> {
         // Phase 0 Fix: Extract additional config early for use throughout initialization
         let additional = &config.campaign.parameters.additional;
+        let allow_worker_oversubscription =
+            Self::additional_bool(additional, "allow_worker_oversubscription").unwrap_or(false);
+        let host_parallelism = std::thread::available_parallelism()
+            .map(|parallelism| parallelism.get())
+            .unwrap_or(1)
+            .max(1);
+        let requested_workers = workers.max(1);
+        let workers = if allow_worker_oversubscription {
+            requested_workers
+        } else {
+            requested_workers.min(host_parallelism)
+        };
+        if workers != requested_workers {
+            tracing::warn!(
+                "Capping workers {} -> {} to match host parallelism {}; set \
+                 additional.allow_worker_oversubscription=true to opt out",
+                requested_workers,
+                workers,
+                host_parallelism
+            );
+        }
 
         // Create executor based on framework (with optional build dir overrides)
         let executor_factory_options = Self::parse_executor_factory_options(&config)?;
@@ -111,6 +132,29 @@ impl FuzzingEngine {
 
             let kill_on_timeout =
                 Self::additional_bool(additional, "kill_on_timeout").unwrap_or(true);
+            let memory_limit_bytes =
+                Self::additional_u64(additional, "isolation_memory_limit_bytes")
+                    .or_else(|| {
+                        Self::additional_u64(additional, "isolation_memory_limit_mb")
+                            .map(|mb| mb.saturating_mul(1024 * 1024))
+                    })
+                    .or_else(|| {
+                        std::env::var("ZK_FUZZER_ISOLATION_MEMORY_LIMIT_MB")
+                            .ok()
+                            .and_then(|raw| raw.trim().parse::<u64>().ok())
+                            .map(|mb| mb.saturating_mul(1024 * 1024))
+                    })
+                    .unwrap_or_else(|| {
+                        Self::default_isolation_memory_limit_bytes(additional, workers)
+                    });
+            let cpu_limit_secs = Self::additional_u64(additional, "isolation_cpu_limit_secs")
+                .or_else(|| {
+                    std::env::var("ZK_FUZZER_ISOLATION_CPU_LIMIT_SECS")
+                        .ok()
+                        .and_then(|raw| raw.trim().parse::<u64>().ok())
+                })
+                .unwrap_or(0);
+            Self::enforce_resource_preflight(additional, workers, Some(memory_limit_bytes))?;
 
             let mut isolated_executor = IsolatedExecutor::new(
                 executor,
@@ -125,24 +169,26 @@ impl FuzzingEngine {
                 executor_factory_options.clone(),
                 execution_timeout_ms,
             )?;
-
-            // Configure kill_on_timeout if specified
-            if !kill_on_timeout {
-                use crate::executor::IsolationConfig;
-                let isolation_config = IsolationConfig {
-                    timeout_ms: execution_timeout_ms,
-                    kill_on_timeout: false,
-                    ..IsolationConfig::default()
-                };
-                isolated_executor = isolated_executor.with_config(isolation_config);
-            }
+            use crate::executor::IsolationConfig;
+            let isolation_config = IsolationConfig {
+                timeout_ms: execution_timeout_ms,
+                memory_limit_bytes,
+                cpu_limit_secs,
+                kill_on_timeout,
+                ..IsolationConfig::default()
+            };
+            isolated_executor = isolated_executor.with_config(isolation_config);
 
             executor = Arc::new(isolated_executor);
             tracing::info!(
-                "Per-exec isolation enabled (timeout {} ms, kill_on_timeout: {})",
+                "Per-exec isolation enabled (timeout {} ms, kill_on_timeout: {}, memory_limit={} MiB, cpu_limit={}s)",
                 execution_timeout_ms,
-                kill_on_timeout
+                kill_on_timeout,
+                memory_limit_bytes / (1024 * 1024),
+                cpu_limit_secs
             );
+        } else {
+            Self::enforce_resource_preflight(additional, workers, None)?;
         }
 
         // Scan patterns are target-reusable; if their input schema does not match the actual
@@ -155,9 +201,7 @@ impl FuzzingEngine {
 
         // Phase 0 Fix: Make corpus size configurable instead of hardcoded 10000
         // Allows tuning based on circuit complexity and available memory
-        let corpus_max_size = Self::additional_u64(additional, "corpus_max_size")
-            .unwrap_or(100_000)
-            .max(1) as usize; // Increased default from 10k to 100k
+        let corpus_max_size = Self::bounded_corpus_max_size(additional);
         let corpus = create_corpus(corpus_max_size);
 
         // Initialize symbolic execution integration
@@ -334,5 +378,169 @@ impl FuzzingEngine {
             thread_pool,
             wall_clock_deadline: None,
         })
+    }
+
+    fn enforce_resource_preflight(
+        additional: &crate::config::AdditionalConfig,
+        workers: usize,
+        isolation_memory_limit_bytes: Option<u64>,
+    ) -> anyhow::Result<()> {
+        if !Self::additional_bool(additional, "fail_on_resource_risk").unwrap_or(true) {
+            return Ok(());
+        }
+
+        let Some((available_mb, total_mb)) = Self::host_memory_snapshot_mb() else {
+            return Ok(());
+        };
+
+        let min_available_mb = Self::additional_u64(additional, "resource_guard_min_available_mb")
+            .or_else(|| {
+                std::env::var("ZK_FUZZER_RESOURCE_GUARD_MIN_AVAILABLE_MB")
+                    .ok()
+                    .and_then(|raw| raw.trim().parse::<u64>().ok())
+            })
+            .unwrap_or(2048)
+            .max(1);
+        let min_available_ratio =
+            Self::additional_f64(additional, "resource_guard_min_available_ratio")
+                .unwrap_or(0.03)
+                .clamp(0.0, 1.0);
+        let available_ratio = if total_mb == 0 {
+            0.0
+        } else {
+            available_mb as f64 / total_mb as f64
+        };
+
+        if available_mb <= min_available_mb || available_ratio <= min_available_ratio {
+            anyhow::bail!(
+                "Resource preflight failed: available memory is unsafe \
+                 (available={} MiB, total={} MiB, min_available={} MiB, min_ratio={:.3}, observed_ratio={:.3}). \
+                 No runtime fallback/skip is applied; aborting run.",
+                available_mb,
+                total_mb,
+                min_available_mb,
+                min_available_ratio,
+                available_ratio
+            );
+        }
+
+        let Some(memory_limit_bytes) = isolation_memory_limit_bytes else {
+            return Ok(());
+        };
+
+        let reserved_mb = Self::additional_u64(additional, "resource_guard_reserved_mb")
+            .or_else(|| Self::additional_u64(additional, "isolation_memory_reserved_mb"))
+            .unwrap_or(4096);
+        let max_commit_fraction =
+            Self::additional_f64(additional, "resource_guard_max_commit_fraction")
+                .unwrap_or(0.85)
+                .clamp(0.05, 1.0);
+        let max_commit_mb = ((total_mb as f64) * max_commit_fraction).round() as u64;
+        let per_worker_limit_mb = (memory_limit_bytes / (1024 * 1024)).max(1);
+        let projected_commit_mb =
+            reserved_mb.saturating_add(per_worker_limit_mb.saturating_mul(workers.max(1) as u64));
+
+        if projected_commit_mb > max_commit_mb {
+            anyhow::bail!(
+                "Resource preflight failed: projected isolation memory commit {} MiB exceeds cap {} MiB \
+                 (workers={}, per_worker_limit={} MiB, reserved={} MiB, max_commit_fraction={:.2}). \
+                 No runtime fallback/skip is applied; aborting run.",
+                projected_commit_mb,
+                max_commit_mb,
+                workers.max(1),
+                per_worker_limit_mb,
+                reserved_mb,
+                max_commit_fraction
+            );
+        }
+
+        Ok(())
+    }
+
+    fn bounded_corpus_max_size(additional: &crate::config::AdditionalConfig) -> usize {
+        let configured = Self::additional_u64(additional, "corpus_max_size")
+            .unwrap_or(100_000)
+            .max(1) as usize;
+        let hard_cap = Self::additional_usize(additional, "corpus_max_size_hard_cap")
+            .or_else(|| {
+                std::env::var("ZK_FUZZER_CORPUS_MAX_SIZE_HARD_CAP")
+                    .ok()
+                    .and_then(|raw| raw.trim().parse::<usize>().ok())
+            })
+            .unwrap_or(100_000)
+            .max(1);
+        let bounded = configured.min(hard_cap).max(1);
+        if bounded < configured {
+            tracing::warn!(
+                "Corpus size cap applied: {} -> {} (hard_cap={})",
+                configured,
+                bounded,
+                hard_cap
+            );
+        }
+        bounded
+    }
+
+    pub(super) fn host_memory_snapshot_mb() -> Option<(u64, u64)> {
+        let raw = std::fs::read_to_string("/proc/meminfo").ok()?;
+        let mut mem_available_kib: Option<u64> = None;
+        let mut mem_total_kib: Option<u64> = None;
+
+        for line in raw.lines() {
+            let mut parts = line.split_whitespace();
+            let Some(key) = parts.next() else {
+                continue;
+            };
+            let Some(raw_value) = parts.next() else {
+                continue;
+            };
+            let Ok(value) = raw_value.parse::<u64>() else {
+                continue;
+            };
+            match key {
+                "MemAvailable:" => mem_available_kib = Some(value),
+                "MemTotal:" => mem_total_kib = Some(value),
+                _ => {}
+            }
+        }
+
+        let total_mb = mem_total_kib.map(|kib| (kib / 1024).max(1))?;
+        let available_mb = mem_available_kib
+            .map(|kib| (kib / 1024).max(1))
+            .unwrap_or(total_mb);
+        Some((available_mb, total_mb))
+    }
+
+    fn host_total_memory_mb() -> Option<u64> {
+        Self::host_memory_snapshot_mb().map(|(_available_mb, total_mb)| total_mb)
+    }
+
+    fn default_isolation_memory_limit_bytes(
+        additional: &crate::config::AdditionalConfig,
+        workers: usize,
+    ) -> u64 {
+        let workers = workers.max(1) as u64;
+        let reserved_mb =
+            Self::additional_u64(additional, "isolation_memory_reserved_mb").unwrap_or(4096);
+        let min_per_worker_mb =
+            Self::additional_u64(additional, "isolation_memory_min_mb").unwrap_or(1024);
+        let max_per_worker_mb = Self::additional_u64(additional, "isolation_memory_max_mb")
+            .unwrap_or(8192)
+            .max(min_per_worker_mb);
+        let worker_budget_fraction =
+            Self::additional_f64(additional, "isolation_memory_worker_budget_fraction")
+                .unwrap_or(0.5)
+                .clamp(0.05, 1.0);
+
+        let per_worker_mb = Self::host_total_memory_mb()
+            .map(|total_mb| {
+                let budget_mb = total_mb.saturating_sub(reserved_mb).max(min_per_worker_mb);
+                let scaled_budget_mb = ((budget_mb as f64 * worker_budget_fraction).round() as u64)
+                    .max(min_per_worker_mb);
+                (scaled_budget_mb / workers).clamp(min_per_worker_mb, max_per_worker_mb)
+            })
+            .unwrap_or(4096);
+
+        per_worker_mb.saturating_mul(1024 * 1024)
     }
 }

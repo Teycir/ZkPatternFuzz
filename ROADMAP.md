@@ -571,6 +571,7 @@ All-target catalog snapshot (`2026-02-25`):
 | `2026-02-24` | `EXT-BATCH-010` | `EXT-002, EXT-006, EXT-007, EXT-008, EXT-009` | `evidence-quickcheck (seed=42, iter=200, timeout=60, workers=1; EXT-006 local-copy rerun timeout=300 with local Go module/cache env)` | `5` | `0.44 (Step 0-3 complete; Step 4-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_010/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
 | `2026-02-24` | `EXT-BATCH-011` | `EXT-001, EXT-002, EXT-008` | `evidence-quickcheck (seed=42, iter=200, timeout=60, workers=1; EXT-008 rerun with warm local Scarb cache)` | `3` | `0.00 (Step 0-3 complete; Step 4-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_011/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
 | `2026-02-25` | `EXT-BATCH-013` | `EXT-013, EXT-014, EXT-015, EXT-016` | `evidence-quickcheck (seed=42, iter=200, timeout=90, workers=1; EXT-016 local-copy rerun after Noir preflight compatibility fixes)` | `4 (executed; reruns applied where needed)` | `1.00 (Step 0-3 complete; proof branch pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_013/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
+| `2026-03-02` | `RANKED-P0-20260302` | `rank01..rank05 (semaphore, circuits/authV3, zkevm-circuits, circomlib-ml, email-wallet)` | `susceptibility-ranked execution (seed=42; rank01 iter=120 timeout=180; rank02 iter=120 timeout=180; rank03 iter=20 timeout=300 partial; rank04 iter=80 timeout=180; rank05 iter=40 timeout=300)` | `5 repos (rank03 partial stop after long-running halo2 aliases)` | `n/a (ordered intake execution; proof branch only opened on rank04 candidate)` | `n/a` | `n/a` | `artifacts/external_targets/ranked_wave_p0_20260302/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
 
 `EXT-BATCH-001` snapshot SHAs (`artifacts/external_targets/ext_batch_001/manifests/target_snapshot.json`):
 - `EXT-001`: `c82b3072d7946a76487a8c1be463fc407045391c`
@@ -629,6 +630,43 @@ Intake expansion snapshot SHAs (`2026-02-25`, pre-run freeze):
 - `EXT-014`: `c82b3072d7946a76487a8c1be463fc407045391c`
 - `EXT-015`: `bac0b424fe08e0da9e2522a45d77c028acf47dcd`
 - `EXT-016`: `2a9dd27afb1c03f9085c79a218bf928ddfebf031`
+
+`RANKED-P0-20260302` snapshot SHAs (`artifacts/external_targets/ranked_wave_p0_20260302/manifests/targets_ranked_p0_freeze.tsv`):
+- `rank01` (`/media/elements/Repos/zk0d/cat3_privacy/semaphore`): `341475c66bee7473f8d25f44bc0dcf6b255b5a6c`
+- `rank02` (`/media/elements/Repos/zk0d/cat3_privacy/circuits`): `360715607a240041f49eb46c543fc450051c4cb7`
+- `rank03` (`/media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits`): `18f5bc268ca11988690c7cf59fc4615372ce99f2`
+- `rank04` (`/media/elements/Repos/zkml/circomlib-ml`): `c82b3072d7946a76487a8c1be463fc407045391c`
+- `rank05` (`/media/elements/Repos/zk0d/cat3_privacy/email-wallet`): `6da619a86783617b3520536ccce312352eb0d5c7`
+
+#### 8.9.4b Ranked P0 Follow-Up (`RANKED-P0-20260302`, 2026-03-02)
+- [x] Objective lock and target freeze archived:
+  - `artifacts/external_targets/ranked_wave_p0_20260302/manifests/objective_and_plan.md`
+  - `artifacts/external_targets/ranked_wave_p0_20260302/manifests/targets_ranked_p0_freeze.tsv`
+- [x] Tool readiness logged through dry-run prechecks for each ordered rank:
+  - `artifacts/external_targets/ranked_wave_p0_20260302/logs/rank{01,02,03,04,05}_dry_run.log`
+- [x] Discovery batch execution and triage summary archived:
+  - `artifacts/external_targets/ranked_wave_p0_20260302/reports/batch_summary.md`
+- [x] High-signal candidate selected for proof branch:
+  - Rank 4 (`circomlib-ml`) template `cveX51_circomlib_montgomery_windowmulfix_underconstrained` with `discovery_state=candidate_vulnerability`, `findings_total=9`, `proof_status=proof_failed` (`run_outcome`: `artifacts/external_targets/ranked_wave_p0_20260302/scan_output_rank04/run_signals/latest.json`).
+- [x] Deterministic bounded replay package completed for rank-4 candidate:
+  - proof run root: `artifacts/proof_runs/cveX51/run_20260302_204006_cveX51_rank04_montgomery_replay_triage/`
+  - raw bundle replay reproduced deterministic witness-shape failure (`11/11` cases: `Too many values for input signal in[0]`).
+  - normalized replay adjudication (`11` bundles): `4` success / `7` deterministic constraint assertion failures (`Error: Assert Failed.`), `0` exploit-confirming traces.
+  - conclusion for bounded finding set: `not_exploitable_within_bounds` (`no_exploit_proof.md`, `triage.md`, `impact.md`, `replay_normalized.log`).
+  - scanner hardening shipped with regression coverage: indexed evidence inputs now serialize as Circom-compatible array JSON (`src/reporting/evidence.rs`, `tests/test_reporting_evidence.rs`).
+- [x] Rank 2 follow-up rerun completed with high-capacity ptau (`pot21_final.ptau`) after disabling local `pot12` fallback for this run:
+  - `artifacts/external_targets/ranked_wave_p0_20260302/logs/rank02_followup_ptau21_20260302_205255.log`
+  - batch outcome: `executed=6`, `failures=0`, `reason_code summary: completed=6` (keygen blocker cleared).
+- [x] Rank 3 alias-focused halo2 continuation run completed (`cveX21`, `cveX07`):
+  - `artifacts/external_targets/ranked_wave_p0_20260302/logs/rank03_followup_alias_20260302_2210.log`
+  - batch outcome: `executed=2`, `failures=0`, `reason_code summary: completed=2`.
+- [ ] Rank 5 rerun remains blocked (`pending_proof`), but dependency staging progressed:
+  - `circom-grumpkin` dependency is now staged under `bins/node_modules/circom-grumpkin` (downloaded from upstream source).
+  - include-path blocker is cleared; failure mode moved from missing include to backend resource limits:
+    - `artifacts/external_targets/ranked_wave_p0_20260302/logs/rank05_followup_include_probe_20260302_2236.log` (`circom_compilation_failed`: 60s external compile timeout, resolved by timeout override).
+    - `artifacts/external_targets/ranked_wave_p0_20260302/logs/rank05_followup_include_probe_node8g_20260302_2239.log` (`key_generation_failed` with `pot12`: `3822641*2 > 2**12`).
+    - `artifacts/external_targets/ranked_wave_p0_20260302/logs/rank05_followup_include_probe_node8g_ptau21_forced_20260302_2247.log` (`key_generation_failed` with forced `pot21`: `3822641*2 > 2**21`).
+  - next required step: stage higher-capacity ptau (>= `2**22`; practical target `pot23`) before rank5 can pass Circom key-setup preflight.
 
 #### 8.9.5 Logic Finding And Remediation Board
 | Finding ID | Target ID | Class | Severity | Repro Status | Owning Module | Fix Commit/PR | Verification Status |
@@ -734,7 +772,7 @@ Issue-to-code-adjustment tracker:
 #### 8.9.8 Follow-Up Snapshot (2026-02-25, Historical)
 
 Historical note:
-- This section is a frozen as-of snapshot for `2026-02-25` and is superseded by the live closure snapshot under "Publish and maintain concise target-level closure table" (`artifacts/external_targets/closure_table/latest_{report.json,table.md}`; latest generated `2026-03-02T18:53:36Z` with `total=16`, `exploitable=1`, `not_exploitable_within_bounds=10`, `blocked=5`).
+- This section is a frozen as-of snapshot for `2026-02-25` and is superseded by the live closure snapshot under "Publish and maintain concise target-level closure table" (`artifacts/external_targets/closure_table/latest_{report.json,table.md}`; latest generated `2026-03-02T18:54:52Z` with `total=16`, `exploitable=1`, `not_exploitable_within_bounds=10`, `blocked=5`).
 
 Scope for this snapshot:
 - latest per-target run-state from `artifacts/**/run_signals/*/summary.json` (including `ext_batch_012` reruns),

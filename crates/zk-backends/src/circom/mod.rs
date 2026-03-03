@@ -30,6 +30,7 @@ const CIRCOM_BIN_CANDIDATES_ENV: &str = "ZK_FUZZER_CIRCOM_BIN_CANDIDATES";
 const CIRCOM_VERSION_CANDIDATES_ENV: &str = "ZK_FUZZER_CIRCOM_VERSION_CANDIDATES";
 const SNARKJS_PATH_CANDIDATES_ENV: &str = "ZK_FUZZER_SNARKJS_PATH_CANDIDATES";
 const CIRCOM_PTAU_SEARCH_PATHS_ENV: &str = "ZK_FUZZER_CIRCOM_PTAU_SEARCH_PATHS";
+const CIRCOM_PTAU_PATH_ENV: &str = "ZKF_PTAU_PATH";
 
 fn circom_command_candidates(preferred: Option<&str>) -> Vec<String> {
     let bin_candidates_raw = std::env::var(CIRCOM_BIN_CANDIDATES_ENV).ok();
@@ -1909,7 +1910,24 @@ impl CircomTarget {
             );
         }
 
+        if let Some(raw) = std::env::var_os(CIRCOM_PTAU_PATH_ENV) {
+            let path = PathBuf::from(raw);
+            if path.as_os_str().is_empty() {
+                anyhow::bail!("{} is set but empty", CIRCOM_PTAU_PATH_ENV);
+            }
+            if is_valid_ptau_file(&path)? {
+                tracing::info!("Using ptau file from {}: {:?}", CIRCOM_PTAU_PATH_ENV, path);
+                return Ok(path);
+            }
+            anyhow::bail!(
+                "Configured ptau file from {} is missing or invalid (bad header/size): {}",
+                CIRCOM_PTAU_PATH_ENV,
+                path.display()
+            );
+        }
+
         let mut ptau_dirs = Vec::<PathBuf>::new();
+        let mut direct_ptau_candidates = Vec::<PathBuf>::new();
         push_unique_path(&mut ptau_dirs, self.build_dir.clone());
         push_unique_path(&mut ptau_dirs, PathBuf::from("."));
 
@@ -1924,8 +1942,23 @@ impl CircomTarget {
 
         if let Some(raw) = std::env::var_os(CIRCOM_PTAU_SEARCH_PATHS_ENV) {
             for candidate in std::env::split_paths(&raw) {
-                push_unique_path(&mut ptau_dirs, candidate);
+                if candidate.extension().is_some_and(|ext| ext == "ptau") {
+                    push_unique_path(&mut direct_ptau_candidates, candidate);
+                } else {
+                    push_unique_path(&mut ptau_dirs, candidate);
+                }
             }
+        }
+
+        for candidate in direct_ptau_candidates {
+            if is_valid_ptau_file(&candidate)? {
+                tracing::info!("Found existing valid ptau file: {:?}", candidate);
+                return Ok(candidate);
+            }
+            tracing::warn!(
+                "Ignoring invalid ptau candidate (bad header/size): {}",
+                candidate.display()
+            );
         }
 
         if let Some(home) = dirs::home_dir() {
