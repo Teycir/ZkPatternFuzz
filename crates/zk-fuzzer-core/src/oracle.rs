@@ -56,6 +56,14 @@ pub trait BugOracle: Send + Sync {
     ) -> Option<Finding> {
         None
     }
+
+    /// Return a startup configuration error if the oracle is misconfigured.
+    ///
+    /// Engine builders can use this to fail fast instead of silently running
+    /// with disabled detection logic.
+    fn configuration_error(&self) -> Option<String> {
+        None
+    }
 }
 
 /// Statistics from oracle execution
@@ -268,6 +276,15 @@ impl BugOracle for UnderconstrainedOracle {
             findings: self.collision_count,
             unique_outputs_seen: self.output_history.len() as u64,
         })
+    }
+
+    fn configuration_error(&self) -> Option<String> {
+        if self.num_public_inputs.is_none() {
+            return Some(
+                "num_public_inputs is not configured; call with_public_input_count(...) when constructing UnderconstrainedOracle".to_string(),
+            );
+        }
+        None
     }
 }
 

@@ -227,6 +227,7 @@ pub mod util;
 // New feature modules
 pub mod analysis;
 pub mod chain_fuzzer; // Mode 3: Multi-step chain fuzzing
+pub mod checks;
 pub mod differential;
 pub mod formal;
 pub mod multi_circuit;

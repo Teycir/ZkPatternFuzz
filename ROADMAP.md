@@ -1276,9 +1276,10 @@ gh run watch
 ## 🐛 Detection Capacity Bug Fixes (2026-03-02)
 
 ### Critical (P0)
-- [ ] **Bug 1**: `UnderconstrainedOracle` silently disables when `num_public_inputs` is unconfigured
+- [x] **Bug 1**: `UnderconstrainedOracle` silently disables when `num_public_inputs` is unconfigured
   - Issue: `crates/zk-fuzzer-core/src/oracle.rs` logs one warning then returns `None` for all subsequent checks, making campaigns appear clean while the core detection mechanism is off.
-  - Fix: Require `num_public_inputs` at construction time or fail the campaign explicitly instead of silent skip.
+  - Fix: Added fail-fast oracle configuration validation in `FuzzingEngineCoreBuilder::build` via `BugOracle::configuration_error()`. `UnderconstrainedOracle` now reports a startup configuration error when `num_public_inputs` is unset, so campaign bootstrap fails explicitly instead of running with a silently disabled oracle (`crates/zk-fuzzer-core/src/{oracle.rs,engine.rs}`).
+  - Validation (2026-03-03): `cargo test -p zk-fuzzer-core --test engine -- --nocapture`, `cargo test -p zk-fuzzer-core --test oracle -- --nocapture` (includes new regression `engine_builder_rejects_unconfigured_underconstrained_oracle` in `crates/zk-fuzzer-core/tests/engine.rs`).
   - Impact: Critical - false sense of security; campaigns report 0 findings when the oracle is actually disabled.
 
 ### High Priority (P1)

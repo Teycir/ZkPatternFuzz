@@ -272,6 +272,120 @@ fn collect_configured_attack_keys(config: &FuzzConfig) -> HashSet<&'static str> 
     keys
 }
 
+fn render_value_for_message(value: &serde_yaml::Value) -> String {
+    match value {
+        serde_yaml::Value::Bool(v) => v.to_string(),
+        serde_yaml::Value::Number(v) => v.to_string(),
+        serde_yaml::Value::String(v) => format!("{:?}", v),
+        _ => serde_yaml::to_string(value)
+            .map(|s| s.trim().replace('\n', " "))
+            .unwrap_or_else(|_| "<non-scalar>".to_string()),
+    }
+}
+
+fn read_bool_with_validation(
+    additional: &crate::config::AdditionalConfig,
+    warnings: &mut Vec<ReadinessWarning>,
+    key: &str,
+    category: &str,
+) -> Option<bool> {
+    if !additional.contains_key(key) {
+        return None;
+    }
+    if let Some(parsed) = additional.get_bool(key) {
+        return Some(parsed);
+    }
+    let rendered = additional
+        .get(key)
+        .map(render_value_for_message)
+        .unwrap_or_else(|| "<missing>".to_string());
+    warnings.push(
+        ReadinessWarning::critical(
+            category,
+            &format!(
+                "Invalid boolean value for '{}': {} (value is ignored, causing silent fallback)",
+                key, rendered
+            ),
+        )
+        .with_fix(&format!(
+            "Set {} to true/false (or 1/0, yes/no), not a nested/object value",
+            key
+        )),
+    );
+    None
+}
+
+fn validate_deserializable_additional<T: serde::de::DeserializeOwned>(
+    additional: &crate::config::AdditionalConfig,
+    warnings: &mut Vec<ReadinessWarning>,
+    key: &str,
+    category: &str,
+    type_hint: &str,
+) {
+    let Some(value) = additional.get(key) else {
+        return;
+    };
+    if serde_yaml::from_value::<T>(value.clone()).is_ok() {
+        return;
+    }
+    warnings.push(
+        ReadinessWarning::critical(
+            category,
+            &format!(
+                "Invalid '{}' config; parser will ignore/empty-fallback this section",
+                key
+            ),
+        )
+        .with_fix(&format!(
+            "Provide '{}' as a valid {} section",
+            key, type_hint
+        )),
+    );
+}
+
+fn normalize_oracle_name(name: &str) -> String {
+    name.trim()
+        .to_ascii_lowercase()
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .collect()
+}
+
+fn is_known_oracle_name(name: &str) -> bool {
+    matches!(
+        normalize_oracle_name(name).as_str(),
+        "nullifier"
+            | "nullifieroracle"
+            | "nullifiercollision"
+            | "nullifiercollisionoracle"
+            | "nullifierreuse"
+            | "determinism"
+            | "merkle"
+            | "merkleoracle"
+            | "merkleproof"
+            | "merklesoundness"
+            | "merklesoundnessoracle"
+            | "commitment"
+            | "commitmentoracle"
+            | "range"
+            | "rangeoracle"
+            | "rangeproof"
+            | "rangeprooforacle"
+            | "rangebypass"
+            | "bitconstraintbypass"
+            | "underconstrained"
+            | "underconstrainedoracle"
+            | "differentwitnesssameoutput"
+            | "arithmeticoverflow"
+            | "arithmeticoverfloworacle"
+            | "overflow"
+            | "constraintcountmismatch"
+            | "constraintcountoracle"
+            | "proofforgery"
+            | "proofforgeryoracle"
+    )
+}
+
 /// Check a campaign configuration for 0-day readiness
 pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     let mut warnings = Vec::new();
@@ -279,18 +393,15 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     // 1. Strict backend behavior is always enforced.
     // Keep compatibility checks so legacy configs don't silently disable safety.
     let additional = &config.campaign.parameters.additional;
-    let evidence_mode = additional
-        .get("evidence_mode")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let engagement_strict = additional
-        .get("engagement_strict")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(evidence_mode);
-    if matches!(
-        additional.get("strict_backend").and_then(|v| v.as_bool()),
-        Some(false)
-    ) {
+    let evidence_mode =
+        read_bool_with_validation(additional, &mut warnings, "evidence_mode", "Config")
+            .unwrap_or(false);
+    let engagement_strict =
+        read_bool_with_validation(additional, &mut warnings, "engagement_strict", "Config")
+            .unwrap_or(evidence_mode);
+    if read_bool_with_validation(additional, &mut warnings, "strict_backend", "Backend")
+        == Some(false)
+    {
         warnings.push(
             ReadinessWarning::critical(
                 "Backend",
@@ -300,6 +411,103 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
                 "Remove strict_backend (or set strict_backend: true for legacy compatibility)",
             ),
         );
+    }
+
+    // Explicitly validate typed v2 sections so malformed entries cannot silently
+    // downgrade to empty/default behavior.
+    validate_deserializable_additional::<Vec<crate::config::v2::Invariant>>(
+        additional,
+        &mut warnings,
+        "v2_invariants",
+        "Config",
+        "array of invariants",
+    );
+    validate_deserializable_additional::<Vec<crate::config::v2::SchedulePhase>>(
+        additional,
+        &mut warnings,
+        "v2_schedule",
+        "Config",
+        "array of schedule phases",
+    );
+    validate_deserializable_additional::<crate::config::v2::TargetTraits>(
+        additional,
+        &mut warnings,
+        "v2_traits",
+        "Config",
+        "target-traits mapping",
+    );
+
+    if let Some(raw) = additional.get("power_schedule") {
+        let allowed = ["none", "explore", "exploit", "fast", "coe", "lin", "quad", "mmopt"];
+        match raw.as_str() {
+            Some(name) => {
+                if !allowed.contains(&name.trim().to_ascii_lowercase().as_str()) {
+                    warnings.push(
+                        ReadinessWarning::critical(
+                            "Config",
+                            &format!(
+                                "Unknown power_schedule '{}' causes runtime fallback behavior",
+                                name
+                            ),
+                        )
+                        .with_fix("Use one of: none, explore, exploit, fast, coe, lin, quad, mmopt"),
+                    );
+                }
+            }
+            None => warnings.push(
+                ReadinessWarning::critical(
+                    "Config",
+                    &format!(
+                        "power_schedule must be a string, got {}",
+                        render_value_for_message(raw)
+                    ),
+                )
+                .with_fix("Set power_schedule to a string value (for example: mmopt)"),
+            ),
+        }
+    }
+
+    let mut requested_oracles: HashSet<String> =
+        config.oracles.iter().map(|oracle| oracle.name.clone()).collect();
+    if let Some(enabled_oracles) = additional.get("enabled_oracles") {
+        match enabled_oracles {
+            serde_yaml::Value::Sequence(items) => {
+                for item in items {
+                    if let Some(name) = item.as_str() {
+                        requested_oracles.insert(name.to_string());
+                    } else {
+                        warnings.push(
+                            ReadinessWarning::critical(
+                                "Oracles",
+                                "enabled_oracles contains non-string item; runtime will ignore it",
+                            )
+                            .with_fix("Set enabled_oracles as a string array, e.g. [\"range\", \"merkle\"]"),
+                        );
+                    }
+                }
+            }
+            _ => warnings.push(
+                ReadinessWarning::critical(
+                    "Oracles",
+                    "enabled_oracles must be a YAML sequence of oracle names; runtime ignores other shapes",
+                )
+                .with_fix("Set enabled_oracles as a sequence, e.g. enabled_oracles: [\"range\"]"),
+            ),
+        }
+    }
+    for oracle_name in requested_oracles {
+        if !is_known_oracle_name(&oracle_name) {
+            warnings.push(
+                ReadinessWarning::critical(
+                    "Oracles",
+                    &format!(
+                        "Unknown oracle '{}' would be ignored at runtime",
+                        oracle_name
+                    ),
+                )
+                .with_fix("Use a supported oracle name or remove the unknown entry"),
+            );
+        }
     }
 
     // 2. Check invariants
@@ -389,9 +597,8 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     }
 
     // 6. Check oracle validation
-    let oracle_validation = additional
-        .get("oracle_validation")
-        .and_then(|v| v.as_bool());
+    let oracle_validation =
+        read_bool_with_validation(additional, &mut warnings, "oracle_validation", "Oracles");
     let oracle_validation = match oracle_validation {
         Some(value) => value,
         None => evidence_mode,
@@ -414,10 +621,16 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     }
 
     // 7. Check per-execution isolation
-    let per_exec_isolation = additional.get_bool("per_exec_isolation").unwrap_or(false);
-    let allow_no_isolation = additional
-        .get_bool("evidence_allow_no_isolation")
-        .unwrap_or(false);
+    let per_exec_isolation =
+        read_bool_with_validation(additional, &mut warnings, "per_exec_isolation", "Isolation")
+            .unwrap_or(false);
+    let allow_no_isolation = read_bool_with_validation(
+        additional,
+        &mut warnings,
+        "evidence_allow_no_isolation",
+        "Isolation",
+    )
+    .unwrap_or(false);
 
     if !per_exec_isolation && !allow_no_isolation {
         warnings.push(

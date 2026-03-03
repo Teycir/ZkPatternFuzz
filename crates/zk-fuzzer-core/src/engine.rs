@@ -646,6 +646,16 @@ impl FuzzingEngineCoreBuilder {
             None => StdRng::from_entropy(),
         };
 
+        for oracle in &self.oracles {
+            if let Some(err) = oracle.configuration_error() {
+                return Err(anyhow!(
+                    "Oracle '{}' configuration error: {}",
+                    oracle.name(),
+                    err
+                ));
+            }
+        }
+
         Ok(FuzzingEngineCore {
             corpus,
             coverage,

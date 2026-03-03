@@ -2,7 +2,7 @@ use zk_core::{FieldElement, Finding, Framework, TestCase, TestMetadata};
 use zk_fuzzer_core::corpus::create_corpus;
 use zk_fuzzer_core::coverage::create_coverage_tracker;
 use zk_fuzzer_core::engine::FuzzingEngineCore;
-use zk_fuzzer_core::oracle::BugOracle;
+use zk_fuzzer_core::oracle::{BugOracle, UnderconstrainedOracle};
 use zk_fuzzer_core::power_schedule::{PowerSchedule, PowerScheduler};
 use zk_fuzzer_core::structure_aware::StructureAwareMutator;
 
@@ -166,5 +166,33 @@ fn execute_and_track_uses_inspector_constraint_count_for_oracles() {
     assert!(
         has_inspector_count,
         "expected oracle to receive inspector-derived constraint count"
+    );
+}
+
+#[test]
+fn engine_builder_rejects_unconfigured_underconstrained_oracle() {
+    let corpus = create_corpus(8);
+    let coverage = create_coverage_tracker(64);
+
+    let build = FuzzingEngineCore::builder()
+        .seed(Some(13))
+        .input_count(1)
+        .corpus(corpus)
+        .coverage(coverage)
+        .power_scheduler(PowerScheduler::new(PowerSchedule::None))
+        .structure_mutator(StructureAwareMutator::new(Framework::Circom))
+        .oracles(vec![Box::new(UnderconstrainedOracle::new())])
+        .build();
+
+    let err = match build {
+        Ok(_) => panic!("expected builder to fail on unconfigured oracle"),
+        Err(err) => err,
+    };
+    let msg = format!("{:#}", err);
+    assert!(
+        msg.contains("underconstrained_oracle")
+            && msg.contains("num_public_inputs is not configured"),
+        "unexpected error: {}",
+        msg
     );
 }

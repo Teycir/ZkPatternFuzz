@@ -1,4 +1,6 @@
-use zk_fuzzer::config::{check_0day_readiness, Attack, AttackType, FuzzConfig, ReadinessLevel};
+use zk_fuzzer::config::{
+    check_0day_readiness, Attack, AttackType, FuzzConfig, Oracle, ReadinessLevel, Severity,
+};
 
 #[test]
 fn test_missing_circuit_path_is_critical() {
@@ -183,4 +185,85 @@ fn test_strict_readiness_accepts_schedule_attack_aliases() {
             .any(|w| w.message.contains("Missing required novel attack:")),
         "schedule aliases should satisfy strict novel-attack requirements"
     );
+}
+
+#[test]
+fn test_invalid_boolean_setting_is_critical() {
+    let mut config = FuzzConfig::default_v2();
+    config.campaign.parameters.additional.insert(
+        "evidence_mode".to_string(),
+        serde_yaml::Value::String("definitely".to_string()),
+    );
+
+    let report = check_0day_readiness(&config);
+    assert!(report.warnings.iter().any(|w| {
+        w.level == ReadinessLevel::Critical
+            && w.category == "Config"
+            && w.message.contains("Invalid boolean value for 'evidence_mode'")
+    }));
+}
+
+#[test]
+fn test_unknown_oracle_name_is_critical() {
+    let mut config = FuzzConfig::default_v2();
+    config.oracles.push(Oracle {
+        name: "made_up_oracle".to_string(),
+        severity: Severity::Medium,
+        description: "unknown".to_string(),
+    });
+
+    let report = check_0day_readiness(&config);
+    assert!(report.warnings.iter().any(|w| {
+        w.level == ReadinessLevel::Critical
+            && w.category == "Oracles"
+            && w.message.contains("Unknown oracle 'made_up_oracle'")
+    }));
+}
+
+#[test]
+fn test_invalid_enabled_oracles_shape_is_critical() {
+    let mut config = FuzzConfig::default_v2();
+    config.campaign.parameters.additional.insert(
+        "enabled_oracles".to_string(),
+        serde_yaml::Value::String("range".to_string()),
+    );
+
+    let report = check_0day_readiness(&config);
+    assert!(report.warnings.iter().any(|w| {
+        w.level == ReadinessLevel::Critical
+            && w.category == "Oracles"
+            && w.message.contains("enabled_oracles must be a YAML sequence")
+    }));
+}
+
+#[test]
+fn test_invalid_power_schedule_is_critical() {
+    let mut config = FuzzConfig::default_v2();
+    config.campaign.parameters.additional.insert(
+        "power_schedule".to_string(),
+        serde_yaml::Value::String("turbo".to_string()),
+    );
+
+    let report = check_0day_readiness(&config);
+    assert!(report.warnings.iter().any(|w| {
+        w.level == ReadinessLevel::Critical
+            && w.category == "Config"
+            && w.message.contains("Unknown power_schedule 'turbo'")
+    }));
+}
+
+#[test]
+fn test_invalid_v2_schedule_section_is_critical() {
+    let mut config = FuzzConfig::default_v2();
+    config.campaign.parameters.additional.insert(
+        "v2_schedule".to_string(),
+        serde_yaml::Value::String("not-a-schedule".to_string()),
+    );
+
+    let report = check_0day_readiness(&config);
+    assert!(report.warnings.iter().any(|w| {
+        w.level == ReadinessLevel::Critical
+            && w.category == "Config"
+            && w.message.contains("Invalid 'v2_schedule' config")
+    }));
 }
