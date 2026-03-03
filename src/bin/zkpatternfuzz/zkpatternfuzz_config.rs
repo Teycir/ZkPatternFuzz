@@ -9,13 +9,15 @@ use super::{
     DEFAULT_HIGH_CONFIDENCE_MIN_ORACLES, DEFAULT_MEMORY_GUARD_LAUNCH_FLOOR_MB,
     DEFAULT_MEMORY_GUARD_MB_PER_TEMPLATE, DEFAULT_MEMORY_GUARD_MB_PER_WORKER,
     DEFAULT_MEMORY_GUARD_POLL_MS, DEFAULT_MEMORY_GUARD_RESERVED_MB, DEFAULT_MEMORY_GUARD_WAIT_SECS,
-    DEFAULT_STUCK_STEP_WARN_SECS, DETECTION_STAGE_TIMEOUT_ENV, HALO2_DEFAULT_BATCH_TIMEOUT_ENV,
-    HALO2_MIN_EXTERNAL_TIMEOUT_ENV, HIGH_CONFIDENCE_MIN_ORACLES_ENV, MEMORY_GUARD_ENABLED_ENV,
-    MEMORY_GUARD_LAUNCH_FLOOR_MB_ENV, MEMORY_GUARD_MB_PER_TEMPLATE_ENV,
-    MEMORY_GUARD_MB_PER_WORKER_ENV, MEMORY_GUARD_POLL_MS_ENV, MEMORY_GUARD_RESERVED_MB_ENV,
-    MEMORY_GUARD_WAIT_SECS_ENV, PROOF_STAGE_TIMEOUT_ENV, SCAN_OUTPUT_ROOT_ENV,
-    SHARED_BUILD_CACHE_DIR_ENV, STUCK_STEP_WARN_SECS_ENV,
+    DEFAULT_STUCK_STEP_WARN_SECS, DEFAULT_TARGET_OVERRIDES_INDEX_PATH, DETECTION_STAGE_TIMEOUT_ENV,
+    HALO2_DEFAULT_BATCH_TIMEOUT_ENV, HALO2_MIN_EXTERNAL_TIMEOUT_ENV,
+    HIGH_CONFIDENCE_MIN_ORACLES_ENV, MEMORY_GUARD_ENABLED_ENV, MEMORY_GUARD_LAUNCH_FLOOR_MB_ENV,
+    MEMORY_GUARD_MB_PER_TEMPLATE_ENV, MEMORY_GUARD_MB_PER_WORKER_ENV, MEMORY_GUARD_POLL_MS_ENV,
+    MEMORY_GUARD_RESERVED_MB_ENV, MEMORY_GUARD_WAIT_SECS_ENV, PROOF_STAGE_TIMEOUT_ENV,
+    SCAN_OUTPUT_ROOT_ENV, SHARED_BUILD_CACHE_DIR_ENV, STUCK_STEP_WARN_SECS_ENV,
 };
+use super::{expand_env_placeholders, has_unresolved_env_placeholder};
+use zk_fuzzer::target_overrides::{collect_target_override_env, resolve_target_run_overrides};
 
 pub(super) fn high_confidence_min_oracles_from_env() -> usize {
     env_var(HIGH_CONFIDENCE_MIN_ORACLES_ENV)
@@ -301,4 +303,110 @@ pub(super) fn apply_file_config(
         env,
         extra_args: cfg.extra_args,
     })
+}
+
+pub(super) fn apply_target_run_overrides(
+    args: &mut Args,
+    effective_file_cfg: &mut EffectiveFileConfig,
+) -> anyhow::Result<Option<String>> {
+    if args.disable_target_overrides {
+        return Ok(None);
+    }
+
+    let Some(target_raw) = args.target_circuit.as_deref() else {
+        return Ok(None);
+    };
+    let target_resolved = expand_env_placeholders(target_raw).with_context(|| {
+        format!(
+            "Failed expanding target_circuit env placeholders in '{}'",
+            target_raw
+        )
+    })?;
+    if has_unresolved_env_placeholder(&target_resolved) {
+        anyhow::bail!(
+            "Unresolved env placeholder in target_circuit '{}'. Set required environment variables.",
+            target_raw
+        );
+    }
+
+    let index_path_raw = args
+        .target_overrides_index
+        .clone()
+        .unwrap_or_else(|| DEFAULT_TARGET_OVERRIDES_INDEX_PATH.to_string());
+    let index_path = PathBuf::from(&index_path_raw);
+
+    if !index_path.exists() {
+        if args.target_overrides_index.is_some() {
+            anyhow::bail!(
+                "Target overrides index not found: '{}'",
+                index_path.display()
+            );
+        }
+        return Ok(None);
+    }
+
+    let target_path = PathBuf::from(&target_resolved);
+    let Some(resolved) = resolve_target_run_overrides(&index_path, &target_path, &args.framework)?
+    else {
+        return Ok(None);
+    };
+
+    if let Some(value) = resolved.overrides.batch_jobs {
+        if value == 0 {
+            anyhow::bail!(
+                "Invalid batch_jobs=0 in target run overrides '{}'",
+                resolved.overrides_path.display()
+            );
+        }
+        args.jobs = value;
+    }
+    if let Some(value) = resolved.overrides.workers {
+        if value == 0 {
+            anyhow::bail!(
+                "Invalid workers=0 in target run overrides '{}'",
+                resolved.overrides_path.display()
+            );
+        }
+        args.workers = value;
+    }
+    if let Some(value) = resolved.overrides.iterations {
+        args.iterations = value;
+    }
+    if let Some(value) = resolved.overrides.timeout {
+        if value == 0 {
+            anyhow::bail!(
+                "Invalid timeout=0 in target run overrides '{}'",
+                resolved.overrides_path.display()
+            );
+        }
+        args.timeout = value;
+    }
+
+    let target_env = collect_target_override_env(&resolved.overrides)?;
+    for (key, value) in target_env {
+        // Explicit file config should win over auto target defaults.
+        effective_file_cfg.env.entry(key).or_insert(value);
+    }
+
+    let env_keys = if effective_file_cfg.env.is_empty() {
+        "<none>".to_string()
+    } else {
+        effective_file_cfg
+            .env
+            .keys()
+            .cloned()
+            .collect::<Vec<String>>()
+            .join(",")
+    };
+    Ok(Some(format!(
+        "Target overrides applied: target='{}' matrix_target='{}' file='{}' jobs={} workers={} iterations={} timeout={} env_keys={}",
+        resolved.target_name,
+        resolved.target_circuit.display(),
+        resolved.overrides_path.display(),
+        args.jobs,
+        args.workers,
+        args.iterations,
+        args.timeout,
+        env_keys
+    )))
 }

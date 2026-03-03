@@ -51,6 +51,8 @@ pub(super) const DEFAULT_MEMORY_GUARD_POLL_MS: u64 = 1_000;
 pub(super) const DEFAULT_REGISTRY_PATH: &str = "targets/fuzzer_registry.yaml";
 pub(super) const DEV_REGISTRY_PATH: &str = "targets/fuzzer_registry.dev.yaml";
 pub(super) const PROD_REGISTRY_PATH: &str = "targets/fuzzer_registry.prod.yaml";
+pub(super) const DEFAULT_TARGET_OVERRIDES_INDEX_PATH: &str =
+    "targets/zk0d_matrix_external_manual.yaml";
 pub(super) const PROOF_STAGE_NOT_STARTED_REASON_CODE: &str = "proof_stage_not_started";
 pub(super) const MAX_PIPE_CAPTURE_BYTES: usize = 8 * 1024 * 1024;
 pub(super) const PIPE_CAPTURE_TRUNCATED_NOTICE: &str =
@@ -100,6 +102,14 @@ pub(super) struct Args {
     /// Target circuit path used for all selected templates
     #[arg(long)]
     pub(super) target_circuit: Option<String>,
+
+    /// Matrix/index file used to auto-apply per-target run_overrides_file entries
+    #[arg(long)]
+    pub(super) target_overrides_index: Option<String>,
+
+    /// Disable automatic target override detection/application
+    #[arg(long, default_value_t = false)]
+    pub(super) disable_target_overrides: bool,
 
     /// Main component used for all selected templates
     #[arg(long, default_value = "main")]

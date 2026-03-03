@@ -59,9 +59,10 @@ use zkpatternfuzz_campaign::{
 #[allow(unused_imports)]
 use zkpatternfuzz_campaign::{parse_correlation_confidence, parse_correlation_oracle_count};
 use zkpatternfuzz_config::{
-    apply_file_config, effective_batch_timeout_secs, halo2_effective_external_timeout_secs,
-    high_confidence_min_oracles_from_env, load_batch_file_config, load_memory_guard_config,
-    load_stage_timeout_config, resolve_build_cache_dir, resolve_results_root,
+    apply_file_config, apply_target_run_overrides, effective_batch_timeout_secs,
+    halo2_effective_external_timeout_secs, high_confidence_min_oracles_from_env,
+    load_batch_file_config, load_memory_guard_config, load_stage_timeout_config,
+    resolve_build_cache_dir, resolve_results_root,
 };
 use zkpatternfuzz_discovery::{
     build_template_index, dedupe_patterns_by_signature, discover_all_pattern_templates,
@@ -119,12 +120,15 @@ fn main() -> anyhow::Result<()> {
     )?;
 
     let mut args = Args::parse();
-    let effective_file_cfg = if let Some(path) = args.config_json.clone() {
+    let mut effective_file_cfg = if let Some(path) = args.config_json.clone() {
         let cfg = load_batch_file_config(&path)?;
         apply_file_config(&mut args, cfg)?
     } else {
         EffectiveFileConfig::default()
     };
+    if let Some(message) = apply_target_run_overrides(&mut args, &mut effective_file_cfg)? {
+        println!("{}", message);
+    }
     let requested_timeout = args.timeout;
     args.timeout = effective_batch_timeout_secs(&args.framework, args.timeout);
     if args.timeout != requested_timeout {

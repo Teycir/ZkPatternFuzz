@@ -221,6 +221,7 @@ pub mod oracles;
 pub mod pipeline;
 pub mod progress;
 pub mod reporting;
+pub mod target_overrides;
 pub mod targets;
 pub mod util;
 

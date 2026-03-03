@@ -82,6 +82,14 @@ pub enum Commands {
         #[arg(long, default_value = "circom")]
         framework: String,
 
+        /// Matrix/index file used to auto-apply per-target run_overrides_file entries
+        #[arg(long)]
+        target_overrides_index: Option<String>,
+
+        /// Disable automatic target override detection/application
+        #[arg(long, default_value_t = false)]
+        disable_target_overrides: bool,
+
         /// Number of iterations
         #[arg(short, long, default_value = "100000")]
         iterations: u64,
@@ -293,6 +301,8 @@ pub struct ScanRequest {
     pub target_circuit: String,
     pub main_component: String,
     pub framework: String,
+    pub target_overrides_index: Option<String>,
+    pub disable_target_overrides: bool,
     pub output_suffix: Option<String>,
     pub mono_options: CampaignRunOptions,
     pub chain_options: ChainRunOptions,
@@ -360,6 +370,8 @@ impl Cli {
                 target_circuit,
                 main_component,
                 framework,
+                target_overrides_index,
+                disable_target_overrides,
                 iterations,
                 timeout,
                 resume,
@@ -371,6 +383,8 @@ impl Cli {
                 target_circuit,
                 main_component,
                 framework,
+                target_overrides_index,
+                disable_target_overrides,
                 output_suffix,
                 mono_options: CampaignRunOptions {
                     command_label: "scan",
