@@ -199,7 +199,8 @@ fn test_invalid_boolean_setting_is_critical() {
     assert!(report.warnings.iter().any(|w| {
         w.level == ReadinessLevel::Critical
             && w.category == "Config"
-            && w.message.contains("Invalid boolean value for 'evidence_mode'")
+            && w.message
+                .contains("Invalid boolean value for 'evidence_mode'")
     }));
 }
 
@@ -232,7 +233,8 @@ fn test_invalid_enabled_oracles_shape_is_critical() {
     assert!(report.warnings.iter().any(|w| {
         w.level == ReadinessLevel::Critical
             && w.category == "Oracles"
-            && w.message.contains("enabled_oracles must be a YAML sequence")
+            && w.message
+                .contains("enabled_oracles must be a YAML sequence")
     }));
 }
 

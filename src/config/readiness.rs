@@ -438,7 +438,9 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     );
 
     if let Some(raw) = additional.get("power_schedule") {
-        let allowed = ["none", "explore", "exploit", "fast", "coe", "lin", "quad", "mmopt"];
+        let allowed = [
+            "none", "explore", "exploit", "fast", "coe", "lin", "quad", "mmopt",
+        ];
         match raw.as_str() {
             Some(name) => {
                 if !allowed.contains(&name.trim().to_ascii_lowercase().as_str()) {
@@ -450,7 +452,9 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
                                 name
                             ),
                         )
-                        .with_fix("Use one of: none, explore, exploit, fast, coe, lin, quad, mmopt"),
+                        .with_fix(
+                            "Use one of: none, explore, exploit, fast, coe, lin, quad, mmopt",
+                        ),
                     );
                 }
             }
@@ -467,8 +471,11 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
         }
     }
 
-    let mut requested_oracles: HashSet<String> =
-        config.oracles.iter().map(|oracle| oracle.name.clone()).collect();
+    let mut requested_oracles: HashSet<String> = config
+        .oracles
+        .iter()
+        .map(|oracle| oracle.name.clone())
+        .collect();
     if let Some(enabled_oracles) = additional.get("enabled_oracles") {
         match enabled_oracles {
             serde_yaml::Value::Sequence(items) => {
