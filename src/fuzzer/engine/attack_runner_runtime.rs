@@ -676,6 +676,7 @@ impl FuzzingEngine {
         let public_indices = inspector.public_input_indices();
         let private_indices = inspector.private_input_indices();
         let output_indices = inspector.output_indices();
+        let wire_labels = inspector.wire_labels();
 
         if private_indices.is_empty() {
             anyhow::bail!(
@@ -695,6 +696,13 @@ impl FuzzingEngine {
             analyzer.initialize_inputs_with_indices(&public_indices, &private_indices);
         } else {
             analyzer.initialize_inputs();
+        }
+        let selector_count = analyzer.infer_selector_signals_from_labels(&wire_labels);
+        if selector_count > 0 {
+            tracing::info!(
+                "Taint analysis: inferred {} selector/control wires from constraint labels",
+                selector_count
+            );
         }
         if !output_indices.is_empty() {
             analyzer.mark_outputs(&output_indices);

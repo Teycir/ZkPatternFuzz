@@ -1308,9 +1308,10 @@ gh run watch
   - Validation (2026-03-03): `cargo test --test test_oracles_spec_inference --quiet` (new regressions for output-wire constant spec retention + output-wire violation candidate generation in `tests/test_oracles_spec_inference.rs`).
   - Impact: High - significant recall gap for bugs that manifest as output-wire constraint violations.
 
-- [ ] **Bug 4**: Taint analysis over-taints due to selector/MUX-unaware propagation
+- [x] **Bug 4**: Taint analysis over-taints due to selector/MUX-unaware propagation
   - Issue: `src/analysis/taint.rs` treats all constraint terms uniformly without distinguishing selector/multiplexer wires from data wires, causing over-tainting (false positives on info-leak claims) or missed implicit flows.
-  - Fix: Add MUX-pattern recognition for R1CS constraints or integrate with higher-level AST analysis to distinguish control-path selectors from data-path signals.
+  - Fix (2026-03-03): taint propagation is now selector-aware: inferred selector/control wires are excluded from direct data-flow label union, and private selector influence is tracked as explicit `ImplicitFlow` when enabled (`src/analysis/taint.rs`, `src/fuzzer/engine/attack_runner_runtime.rs`).
+  - Validation (2026-03-03): `cargo test --test test_analysis_taint --quiet` (new selector regressions in `tests/test_analysis_taint.rs`).
   - Impact: High - taint-based information-leakage claims are unreliable for circuits with conditional logic.
 
 ### Medium Priority (P2)

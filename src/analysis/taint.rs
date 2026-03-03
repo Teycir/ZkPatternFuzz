@@ -34,6 +34,8 @@ pub struct TaintState {
     pub influencing_constraints: Vec<usize>,
     /// Is this signal considered "leaked"?
     pub is_leaked: bool,
+    /// Private control-flow influence through selector wires (implicit flow)
+    pub has_implicit_private_flow: bool,
 }
 
 impl TaintState {
@@ -44,6 +46,7 @@ impl TaintState {
             labels,
             influencing_constraints: Vec::new(),
             is_leaked: false,
+            has_implicit_private_flow: false,
         }
     }
 
@@ -54,6 +57,7 @@ impl TaintState {
             labels,
             influencing_constraints: Vec::new(),
             is_leaked: false,
+            has_implicit_private_flow: false,
         }
     }
 
@@ -76,6 +80,7 @@ impl TaintState {
         self.labels.extend(other.labels.iter().cloned());
         self.influencing_constraints
             .extend(&other.influencing_constraints);
+        self.has_implicit_private_flow |= other.has_implicit_private_flow;
     }
 }
 
@@ -89,6 +94,8 @@ pub struct TaintAnalyzer {
     num_private_inputs: usize,
     /// Configuration
     config: TaintConfig,
+    /// Signals known to be selectors/multiplexers (control flow)
+    selector_signals: HashSet<usize>,
 }
 
 /// Configuration for taint analysis
@@ -119,12 +126,47 @@ impl TaintAnalyzer {
             num_public_inputs,
             num_private_inputs,
             config: TaintConfig::default(),
+            selector_signals: HashSet::new(),
         }
     }
 
     pub fn with_config(mut self, config: TaintConfig) -> Self {
         self.config = config;
         self
+    }
+
+    /// Configure explicit selector/control-wire signal indices.
+    pub fn set_selector_signals(&mut self, selector_indices: &[usize]) {
+        self.selector_signals.clear();
+        self.selector_signals
+            .extend(selector_indices.iter().copied());
+    }
+
+    /// Infer selector/control-wire indices from wire labels.
+    ///
+    /// Returns the number of inferred selector signals.
+    pub fn infer_selector_signals_from_labels(
+        &mut self,
+        wire_labels: &HashMap<usize, String>,
+    ) -> usize {
+        self.selector_signals.clear();
+        for (idx, label) in wire_labels {
+            if Self::is_selector_like_label(label) {
+                self.selector_signals.insert(*idx);
+            }
+        }
+        self.selector_signals.len()
+    }
+
+    fn is_selector_like_label(label: &str) -> bool {
+        let lower = label.to_lowercase();
+        lower.starts_with("q_")
+            || lower.contains("selector")
+            || lower == "sel"
+            || lower.starts_with("sel_")
+            || lower.ends_with("_sel")
+            || lower.contains("mux")
+            || lower.contains("switch")
     }
 
     /// Initialize taint labels for inputs
@@ -167,13 +209,26 @@ impl TaintAnalyzer {
         input_signals: &[usize],
         output_signal: usize,
     ) {
-        // Collect taint from all input signals
+        // Collect taint from data signals while tracking control-selector influence separately.
         let mut combined_taint = TaintState::default();
+        let mut selector_taint = TaintState::default();
 
         for &signal in input_signals {
             if let Some(taint) = self.signal_taints.get(&signal) {
-                combined_taint.merge(taint);
+                if self.selector_signals.contains(&signal) {
+                    selector_taint.merge(taint);
+                } else {
+                    combined_taint.merge(taint);
+                }
             }
+        }
+
+        if self.config.report_implicit_flows
+            && selector_taint.has_private_taint()
+            && combined_taint.has_public_taint()
+            && !combined_taint.has_private_taint()
+        {
+            combined_taint.has_implicit_private_flow = true;
         }
 
         combined_taint.influencing_constraints.push(constraint_id);
@@ -234,6 +289,23 @@ impl TaintAnalyzer {
                     severity: Severity::Critical,
                     description: format!(
                         "Private data leaks to public output at signal {}",
+                        signal_idx
+                    ),
+                    influencing_constraints: taint_state.influencing_constraints.clone(),
+                });
+            }
+
+            if self.config.report_implicit_flows
+                && taint_state.has_implicit_private_flow
+                && taint_state.is_leaked
+                && !taint_state.has_private_taint()
+            {
+                findings.push(TaintFinding {
+                    signal_index: *signal_idx,
+                    finding_type: TaintFindingType::ImplicitFlow,
+                    severity: Severity::High,
+                    description: format!(
+                        "Signal {} is control-dependent on private selector state (implicit flow)",
                         signal_idx
                     ),
                     influencing_constraints: taint_state.influencing_constraints.clone(),
