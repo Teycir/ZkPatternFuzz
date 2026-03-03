@@ -42,6 +42,13 @@ pub(crate) fn startup_chain_run_or_exit_dry_run(
     }
 
     println!();
+    if !options.dry_run {
+        seed_running_run_artifact(
+            &lifecycle_ctx,
+            "preflight_readiness",
+            chain_run_options_doc(options),
+        );
+    }
     let readiness = zk_fuzzer::config::check_0day_readiness(config);
     print!("{}", readiness.format());
     require_evidence_readiness_or_emit_failure(
@@ -52,6 +59,13 @@ pub(crate) fn startup_chain_run_or_exit_dry_run(
         "Campaign has critical issues; refusing to start strict chain run",
     )?;
 
+    if !options.dry_run {
+        seed_running_run_artifact(
+            &lifecycle_ctx,
+            "preflight_backend",
+            chain_run_options_doc(options),
+        );
+    }
     run_backend_preflight_or_emit_failure(
         options.dry_run,
         config,

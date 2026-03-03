@@ -248,7 +248,10 @@ pub(crate) fn initialize_campaign_run_lifecycle(
         );
 
         // Seed a persistent status file early so interrupted runs still leave artifacts.
-        seed_running_run_artifact(&run_ctx, stage, options_doc);
+        // Lock acquisition has completed at this point; publish an explicit post-lock stage
+        // so monitors don't keep reporting "acquire_output_lock" during later startup work.
+        let initial_stage = "lifecycle_initialized";
+        seed_running_run_artifact(&run_ctx, initial_stage, options_doc);
     }
 
     // Ensure build artifacts never land inside the engagement report folder.

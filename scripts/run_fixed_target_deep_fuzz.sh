@@ -167,6 +167,26 @@ ensure_zkevm_dependency_readiness() {
   echo "[STEP] zkevm_dependency_preflight completed"
 }
 
+output_lock_preflight() {
+  local lock_path="$TARGET_OUTPUT_ROOT/.zkfuzz.lock"
+  echo "[STEP] output_lock_preflight started"
+  if [[ ! -f "$lock_path" ]]; then
+    echo "[STEP] output_lock_preflight completed status=absent"
+    return
+  fi
+
+  local lock_pid
+  lock_pid="$(sed -n 's/^pid=\([0-9][0-9]*\).*/\1/p' "$lock_path" | head -n 1 || true)"
+  if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" 2>/dev/null; then
+    echo "[STEP] output_lock_preflight failed status=active_lock pid=$lock_pid lock_path=$lock_path" >&2
+    echo "Refusing to run while another scan owns output lock. Stop that scan first." >&2
+    exit 1
+  fi
+
+  rm -f "$lock_path"
+  echo "[STEP] output_lock_preflight completed status=stale_removed lock_path=$lock_path"
+}
+
 HALO2_USE_HOST_CARGO_HOME_VALUE=0
 HALO2_STRICT_READINESS_VALUE=0
 if [[ "$FRAMEWORK_LC" == "halo2" ]]; then
@@ -235,6 +255,7 @@ echo "run_log:          $RUN_LOG"
 echo "[STEP] target_resolved"
 echo "[STEP] selector_profile_resolved profile=$SELECTOR_PROFILE"
 ensure_zkevm_dependency_readiness
+output_lock_preflight
 echo "[STEP] monitoring_started interval=${MONITOR_INTERVAL_SECS}s"
 
 start_monitor

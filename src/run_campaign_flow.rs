@@ -375,6 +375,13 @@ pub(crate) async fn run_campaign(
 
         // Pre-flight readiness check for strict evidence engagements.
         stage = "preflight_readiness";
+        if !options.dry_run {
+            seed_running_run_artifact(
+                &lifecycle_ctx,
+                stage,
+                campaign_run_options_doc(&options),
+            );
+        }
         println!();
         let readiness = zk_fuzzer::config::check_0day_readiness(&config);
         print!("{}", readiness.format());
@@ -388,6 +395,9 @@ pub(crate) async fn run_campaign(
     }
 
     stage = "preflight_backend";
+    if !options.dry_run {
+        seed_running_run_artifact(&lifecycle_ctx, stage, campaign_run_options_doc(&options));
+    }
     run_backend_preflight_or_emit_failure(options.dry_run, &config, &lifecycle_ctx, stage)?;
 
     // Print banner

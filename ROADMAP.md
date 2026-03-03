@@ -412,7 +412,10 @@ Current status: ✅ enforced by `has_required_proof_artifacts()` + proof-status 
 - [x] Add strict selector group-policy to high-priority Scroll/Halo2 templates to reduce low-signal template runs (`cveX15`, `cveX16`, `cveX39`, `cveX40`, `cveX41`, `cveX35..cveX38`).
 - [x] Introduce Circom comparator/IsZero boolean-output readiness templates and switch `circom_readiness` profile to those high-fit templates (`campaigns/cve/patterns/cveX53_circomlib_comparator_boolean_output.yaml`, `campaigns/cve/patterns/cveX54_circomlib_iszero_boolean_output.yaml`, `targets/fuzzer_registry.prod.yaml`).
 - [x] Extend batch report schema with explicit selector-fit counters (`selector_matched`, `selector_matched_patterns`) for quick mismatch diagnosis (`src/bin/zkpatternfuzz/zkpatternfuzz_reporting.rs`).
-- [ ] Run post-reform benchmark lane and publish before/after selector-mismatch rate + attack-stage reach comparison for external Circom/Halo2 targets.
+- [x] Run post-reform Circom lane and publish before/after selector-mismatch + attack-stage comparison (`artifacts/post_reform_validation/20260303_post_reform_comparison.{md,json}`; mismatch rate `95.12% -> 0.00%`, attack-stage templates `2 -> 2`).
+- [x] Add strict output-lock preflight to standardized wrapper so stale lock files are removed and active lock owners fail fast (`scripts/run_fixed_target_deep_fuzz.sh`).
+- [x] Fix misleading lock-stage reporting: once output lock is acquired, startup now publishes `lifecycle_initialized` and explicit preflight stages (`preflight_readiness` / `preflight_backend`) so stalled runs are diagnosed against the true phase (`src/run_lifecycle.rs`, `src/run_campaign_flow.rs`, `src/run_chain_startup.rs`).
+- [ ] Complete post-reform Halo2 deep comparison: current attempts are still blocked (`cveX15` selector mismatch and `cveX16` stalled during `preflight_backend`), so full before/after publication remains pending.
 
 ### 8.7 Logic Error Triage (2026-02-23)
 - [x] Harden UTC date-boundary determinism in Circom flake streak tests so the two-day streak assertion cannot flake around midnight (`tests/test_circom_flake_gate.py`).
