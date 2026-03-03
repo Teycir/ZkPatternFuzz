@@ -55,13 +55,13 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Panic surface gate
-        run: python3 scripts/check_panic_surface.py --fail-on-stale
+        run: cargo run --locked --bin zkf_checks -- panic-surface --repo-root . --fail-on-stale
 
       - name: Repo hygiene gate
-        run: python3 scripts/check_repo_hygiene.py --repo-root .
+        run: cargo run --locked --bin zkf_checks -- repo-hygiene --repo-root .
 
       - name: Production/test separation gate
-        run: python3 scripts/check_prod_test_separation.py --repo-root .
+        run: cargo run --locked --bin zkf_checks -- prod-test-separation --repo-root .
 
       - name: Readiness matrix target coverage gate
         run: python3 -m unittest -q tests/test_readiness_matrix_targets.py tests/test_backend_readiness_dashboard.py tests/test_backend_maturity_scorecard.py tests/test_circom_flake_gate.py tests/test_release_streak_status.py tests/test_build_external_target_closure_table.py
@@ -248,6 +248,7 @@ jobs:
             min_vulnerable_recall: "0.00"
             min_precision: "0.00"
             max_safe_fpr: "0.25"
+            max_safe_high_conf_fpr: "0.05"
             retention_days: 14
           - track: deep-scheduled
             event_scope: schedule
@@ -263,6 +264,7 @@ jobs:
             min_vulnerable_recall: "0.00"
             min_precision: "0.00"
             max_safe_fpr: "0.20"
+            max_safe_high_conf_fpr: "0.05"
             retention_days: 30
     if: |
       (github.event_name != 'schedule' && matrix.event_scope == 'ci') ||
@@ -315,7 +317,7 @@ jobs:
         run: cargo build --release --bin zk0d_batch --bin zk0d_benchmark
 
       - name: Validate failure dashboard regression tests
-        run: python3 -m unittest -q tests/test_benchmark_failure_dashboard.py
+        run: cargo test --test test_benchmark_failure_dashboard
 
       - name: Run benchmark suites
         env:
@@ -339,7 +341,8 @@ jobs:
           MIN_VULNERABLE_RECALL: ${{ matrix.min_vulnerable_recall }}
           MIN_PRECISION: ${{ matrix.min_precision }}
           MAX_SAFE_FPR: ${{ matrix.max_safe_fpr }}
-        run: ./scripts/ci_benchmark_gate.sh
+          MAX_SAFE_HIGH_CONF_FPR: ${{ matrix.max_safe_high_conf_fpr }}
+        run: cargo run --locked --bin zkf_checks -- benchmark-regression-gate --benchmark-root artifacts/benchmark_runs
 
       - name: Enforce fast-smoke gate
         if: matrix.track == 'fast-smoke' && steps.matrix_gate.outcome == 'failure'
@@ -357,11 +360,11 @@ jobs:
           ZKF_FAILURE_MAX_RATE_CONTRACT_OR_CONFIG: ${{ vars.ZKF_FAILURE_MAX_RATE_CONTRACT_OR_CONFIG }}
           ZKF_FAILURE_MAX_RATE_OTHER_FAILURE: ${{ vars.ZKF_FAILURE_MAX_RATE_OTHER_FAILURE }}
         run: |
-          python3 scripts/benchmark_trend_report.py \
+          cargo run --locked --bin zkf_checks -- benchmark-trend-report \
             --benchmark-root artifacts/benchmark_runs \
             --output-dir artifacts/benchmark_trends \
             --history-file artifacts/benchmark_trends/history.jsonl
-          python3 scripts/benchmark_failure_dashboard.py \
+          cargo run --locked --bin zkf_checks -- benchmark-failure-dashboard \
             --benchmark-root artifacts/benchmark_runs \
             --output-dir artifacts/benchmark_trends
 

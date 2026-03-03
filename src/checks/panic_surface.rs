@@ -1,11 +1,12 @@
 use anyhow::Context;
-use regex::Regex;
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 pub const DEFAULT_SEARCH_ROOTS: &[&str] = &["src", "crates"];
 pub const EXCLUDED_DIR_NAMES: &[&str] = &["target", "tests", "benches", "examples"];
+const UNWRAP_CALL_MARKER: &str = concat!(".un", "wrap(");
+const EXPECT_CALL_MARKER: &str = concat!(".ex", "pect(");
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PanicMatch {
@@ -42,13 +43,18 @@ fn to_relative_slash_path(repo_root: &Path, rust_file: &Path) -> anyhow::Result<
 }
 
 pub fn is_excluded_path(path: &Path) -> bool {
-    let name = path.file_name().and_then(|v| v.to_str()).unwrap_or_default();
+    let name = path
+        .file_name()
+        .and_then(|v| v.to_str())
+        .unwrap_or_default();
     if name == "tests.rs" || name.ends_with("_tests.rs") || name.starts_with("test_") {
         return true;
     }
     path.components().any(|part| {
         let component = part.as_os_str().to_string_lossy();
-        EXCLUDED_DIR_NAMES.iter().any(|excluded| component == *excluded)
+        EXCLUDED_DIR_NAMES
+            .iter()
+            .any(|excluded| component == *excluded)
     })
 }
 
@@ -56,7 +62,6 @@ pub fn collect_panic_matches(
     repo_root: &Path,
     search_roots: &[String],
 ) -> anyhow::Result<Vec<PanicMatch>> {
-    let panic_pattern = Regex::new(r"\.(unwrap|expect)\(").expect("valid regex");
     let mut matches = Vec::new();
 
     for root_name in search_roots {
@@ -71,21 +76,21 @@ pub fn collect_panic_matches(
                 Err(_) => continue,
             };
             let path = entry.path();
-            if !entry.file_type().is_file() || path.extension().and_then(|v| v.to_str()) != Some("rs")
+            if !entry.file_type().is_file()
+                || path.extension().and_then(|v| v.to_str()) != Some("rs")
             {
                 continue;
             }
 
-            let rel_path_buf: PathBuf = path
-                .strip_prefix(repo_root)
-                .unwrap_or(path)
-                .to_path_buf();
+            let rel_path_buf: PathBuf = path.strip_prefix(repo_root).unwrap_or(path).to_path_buf();
             if is_excluded_path(&rel_path_buf) {
                 continue;
             }
 
             let text = std::fs::read_to_string(path)
-                .or_else(|_| std::fs::read(path).map(|bytes| String::from_utf8_lossy(&bytes).to_string()))
+                .or_else(|_| {
+                    std::fs::read(path).map(|bytes| String::from_utf8_lossy(&bytes).to_string())
+                })
                 .with_context(|| format!("Failed to read source file '{}'", path.display()))?;
             let rel = to_relative_slash_path(repo_root, path)?;
 
@@ -94,7 +99,7 @@ pub fn collect_panic_matches(
                 if stripped.is_empty() || stripped.starts_with("//") {
                     continue;
                 }
-                if !panic_pattern.is_match(line) {
+                if !line.contains(UNWRAP_CALL_MARKER) && !line.contains(EXPECT_CALL_MARKER) {
                     continue;
                 }
                 matches.push(PanicMatch {

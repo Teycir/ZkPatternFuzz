@@ -64,7 +64,7 @@ Follow Rust best practices:
 - Production modules (`src/**`, `crates/**`) must not import or re-export test-only code.
 - Place test bodies in `tests/**` only.
 - Do not add `#[cfg(test)]`, `#[test]`, `mod tests`, `#[path = "*tests*"]`, `tests.rs`, `*_tests.rs`, or `test_*.rs` under production trees (`src/**`, `crates/**`).
-- CI enforces this via `scripts/check_prod_test_separation.py` with a baseline gate for legacy debt; any new violation fails the build.
+- CI enforces this via `cargo run --bin zkf_checks -- prod-test-separation --repo-root .` with a baseline gate for legacy debt; any new violation fails the build.
 - Do not add production-only recovery logic or public exports just to make tests compile.
 
 ### 3. Test Your Changes

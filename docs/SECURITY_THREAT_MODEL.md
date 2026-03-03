@@ -105,7 +105,7 @@ Release-critical invariants:
 
 ## 8. Operational Controls
 
-- Run `scripts/check_panic_surface.py --fail-on-stale` in CI and before release tagging.
+- Run `cargo run --bin zkf_checks -- panic-surface --repo-root . --fail-on-stale` in CI and before release tagging.
 - Run `cargo audit` in CI security lane.
 - Track upstream readiness/dependency drift with:
   - `scripts/track_zkevm_releases.py`

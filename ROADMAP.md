@@ -950,7 +950,7 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [x] Document hard no-mixing policy: production modules (`src/**`, `crates/**`) must not import, re-export, or depend on test-only modules/helpers
 - [x] Document hard placement policy: test bodies belong only in `tests/**`; no `#[cfg(test)]` modules or `*_tests.rs` files in production trees
 - [x] Add CI guard that fails if production modules expose test-only symbols/re-exports
-- [x] Enforce production-tree (`src/**`, `crates/**`) no-mixing gate in CI (`scripts/check_prod_test_separation.py`) with baseline tracking (`config/prod_test_separation_baseline.json`) so new prod/test coupling is rejected immediately while legacy debt is explicit.
+- [x] Enforce production-tree (`src/**`, `crates/**`) no-mixing gate in CI (`cargo run --bin zkf_checks -- prod-test-separation --repo-root .`) with baseline tracking (`config/prod_test_separation_baseline.json`) so new prod/test coupling is rejected immediately while legacy debt is explicit.
 
 ### Attack Coverage
 - [x] Wire previously non-executed attack families into runtime dispatch
@@ -1186,13 +1186,13 @@ cargo run --quiet --bin zk0d_benchmark -- --dry-run --trials 1 --jobs 1 --batch-
 cargo run --quiet --bin zk0d_benchmark -- --config-profile dev --suite safe_regression,vulnerable_ground_truth --trials 2 --jobs 4 --batch-jobs 1 --workers 1 --iterations 200 --timeout 15 --output-dir artifacts/benchmark_runs
 
 # Local gate check
-./scripts/ci_benchmark_gate.sh
+cargo run --bin zkf_checks -- benchmark-regression-gate --benchmark-root artifacts/benchmark_runs
 
 # Failure dashboard generation
-python3 scripts/benchmark_failure_dashboard.py --benchmark-root artifacts/benchmark_runs --output-dir artifacts/benchmark_trends
+cargo run --bin zkf_checks -- benchmark-failure-dashboard --benchmark-root artifacts/benchmark_runs --output-dir artifacts/benchmark_trends
 
 # Dashboard unit tests
-python3 -m unittest -q tests/test_benchmark_failure_dashboard.py
+cargo test --test test_benchmark_failure_dashboard
 
 # Cross-backend throughput comparison (Noir/Cairo/Halo2)
 ./scripts/benchmark_cross_backend_throughput.sh --runs 2 --iterations 20 --timeout 20 --workers 2 --batch-jobs 1 --enforce
@@ -1437,7 +1437,7 @@ gh run watch
 
 ### Security Hardening Follow-Up (From Manual Review)
 - [x] Replace unmaintained `bincode 1.3` in ACIR bytecode decoding path (`crates/zk-constraints/Cargo.toml`, `crates/zk-constraints/src/constraint_types.rs`, `crates/zk-constraints/src/constraint_types_tests.rs`) with a maintained serialization strategy and regression tests
-- [x] Add CI panic-surface gate for production code to block new `.unwrap()`/`.expect()` outside tests/docs, with an explicit allowlist for proven invariants (`scripts/check_panic_surface.py`, `config/panic_surface_allowlist.txt`, `.github/workflows/ci.yml`)
+- [x] Add CI panic-surface gate for production code to block new `.unwrap()`/`.expect()` outside tests/docs, with an explicit allowlist for proven invariants (`cargo run --bin zkf_checks -- panic-surface --repo-root . --fail-on-stale`, `config/panic_surface_allowlist.txt`, `.github/workflows/ci.yml`)
 - [x] Add strict external-tool sandbox execution mode (namespace/seccomp wrapper) for backend commands (`circom`, `snarkjs`, `nargo`, `scarb`, `cargo`) and enforce it in release readiness lanes (`crates/zk-backends/src/util.rs`, `src/reporting/command_timeout.rs`, `scripts/run_backend_readiness_lanes.sh`, `.github/workflows/release_validation.yml`)
 - [x] Publish an explicit security assumptions and threat model document for fuzzing/evidence flows and backend toolchain trust boundaries (`docs/SECURITY_THREAT_MODEL.md`)
 
@@ -2028,7 +2028,7 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
   - [x] clean redundant variable redefinitions in `src/toolchain_bootstrap.rs`
   - [x] replace manual multiple-of checks with `.is_multiple_of()`
   - [x] add/keep CI clippy gate at warning-free target for all targets/features
-- [x] Delete repo-root `new_file.txt` and add a lightweight repo-hygiene check to block accidental placeholder files at root (`scripts/check_repo_hygiene.py`, `tests/test_check_repo_hygiene.py`, `.github/workflows/ci.yml`)
+- [x] Delete repo-root `new_file.txt` and add a lightweight repo-hygiene check to block accidental placeholder files at root (`cargo run --bin zkf_checks -- repo-hygiene --repo-root .`, `tests/test_check_repo_hygiene.rs`, `.github/workflows/ci.yml`)
 - [x] Audit AI data-egress path before production usage:
   - [x] review `build_ai_circuit_context` and `src/ai/*` for source-data minimization and explicit opt-in controls
   - [x] ensure API keys/secrets and full circuit sources are never logged

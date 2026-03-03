@@ -141,8 +141,8 @@ Failure dashboard class thresholds are configurable without changing output path
   - `ZKF_FAILURE_MAX_RATE_STABILITY_RUNTIME`
   - `ZKF_FAILURE_MAX_RATE_CONTRACT_OR_CONFIG`
   - `ZKF_FAILURE_MAX_RATE_OTHER_FAILURE`
-- Optional script-level CLI overrides:
-  - `python3 scripts/benchmark_failure_dashboard.py --threshold setup_tooling=0.20 --threshold timeouts=0.12`
+- Optional CLI overrides:
+  - `cargo run --bin zkf_checks -- benchmark-failure-dashboard --threshold setup_tooling=0.20 --threshold timeouts=0.12`
 
 The default suites file includes:
 

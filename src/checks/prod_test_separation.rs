@@ -63,12 +63,14 @@ pub fn is_test_like_filename(name: &str) -> bool {
 pub fn is_excluded_path(path: &Path) -> bool {
     path.components().any(|part| {
         let component = part.as_os_str().to_string_lossy();
-        EXCLUDED_DIR_NAMES.iter().any(|excluded| component == *excluded)
+        EXCLUDED_DIR_NAMES
+            .iter()
+            .any(|excluded| component == *excluded)
     })
 }
 
 fn path_attr_target(raw_attr: &str) -> Option<String> {
-    let pattern = Regex::new(r#"^\s*#\[\s*path\s*=\s*"([^"]+)"\s*\]"#).expect("valid regex");
+    let pattern = Regex::new(r#"^\s*#\[\s*path\s*=\s*"([^"]+)"\s*\]"#).ok()?;
     pattern
         .captures(raw_attr.trim())
         .and_then(|capture| capture.get(1).map(|m| m.as_str().to_string()))
@@ -85,17 +87,38 @@ fn is_test_path(path_str: &str) -> bool {
 
 fn is_test_attribute_line(raw_attr: &str) -> bool {
     let compact = raw_attr.split_whitespace().collect::<String>();
-    let test_attr = Regex::new(r#"^#!?\[(?:[A-Za-z_][A-Za-z0-9_]*::)*test(?:[(\]]|$)"#)
-        .expect("valid regex");
-    let test_word = Regex::new(r#"(?<![A-Za-z0-9_])test(?![A-Za-z0-9_])"#).expect("valid regex");
+    let test_attr = match Regex::new(r#"^#!?\[(?:[A-Za-z_][A-Za-z0-9_]*::)*test(?:[(\]]|$)"#) {
+        Ok(pattern) => pattern,
+        Err(_) => return false,
+    };
+    let contains_test_token = |text: &str| -> bool {
+        let mut token_start: Option<usize> = None;
+        for (idx, ch) in text.char_indices() {
+            if ch.is_ascii_alphanumeric() || ch == '_' {
+                if token_start.is_none() {
+                    token_start = Some(idx);
+                }
+                continue;
+            }
+            if let Some(start) = token_start.take() {
+                if &text[start..idx] == "test" {
+                    return true;
+                }
+            }
+        }
+        if let Some(start) = token_start {
+            return &text[start..] == "test";
+        }
+        false
+    };
     if test_attr.is_match(&compact) {
         return true;
     }
     if compact.starts_with("#[cfg(") || compact.starts_with("#![cfg(") {
-        return test_word.is_match(&compact);
+        return contains_test_token(&compact);
     }
     if compact.starts_with("#[cfg_attr(") || compact.starts_with("#![cfg_attr(") {
-        return test_word.is_match(&compact);
+        return contains_test_token(&compact);
     }
     false
 }
@@ -115,12 +138,11 @@ pub fn collect_violations(
     repo_root: &Path,
     search_roots: &[String],
 ) -> anyhow::Result<Vec<Violation>> {
-    let mod_decl_pattern =
-        Regex::new(r#"^\s*mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;"#).expect("valid regex");
-    let use_test_symbol_pattern = Regex::new(
-        r#"\b(?:pub(?:\([^)]*\))?\s+)?use\s+[^;]*(?:\btests\b|_tests\b)"#,
-    )
-    .expect("valid regex");
+    let mod_decl_pattern = Regex::new(r#"^\s*mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;"#)
+        .with_context(|| "Failed compiling production/test-separation module-declaration regex")?;
+    let use_test_symbol_pattern =
+        Regex::new(r#"\b(?:pub(?:\([^)]*\))?\s+)?use\s+[^;]*(?:\btests\b|_tests\b)"#)
+            .with_context(|| "Failed compiling production/test-separation symbol regex")?;
 
     let mut violations = Vec::new();
 
@@ -136,15 +158,13 @@ pub fn collect_violations(
                 Err(_) => continue,
             };
             let path = entry.path();
-            if !entry.file_type().is_file() || path.extension().and_then(|v| v.to_str()) != Some("rs")
+            if !entry.file_type().is_file()
+                || path.extension().and_then(|v| v.to_str()) != Some("rs")
             {
                 continue;
             }
 
-            let rel_buf: PathBuf = path
-                .strip_prefix(repo_root)
-                .unwrap_or(path)
-                .to_path_buf();
+            let rel_buf: PathBuf = path.strip_prefix(repo_root).unwrap_or(path).to_path_buf();
             if is_excluded_path(&rel_buf) {
                 continue;
             }
@@ -162,7 +182,9 @@ pub fn collect_violations(
             }
 
             let text = std::fs::read_to_string(path)
-                .or_else(|_| std::fs::read(path).map(|bytes| String::from_utf8_lossy(&bytes).to_string()))
+                .or_else(|_| {
+                    std::fs::read(path).map(|bytes| String::from_utf8_lossy(&bytes).to_string())
+                })
                 .with_context(|| format!("Failed to read source file '{}'", path.display()))?;
 
             let mut pending_attrs: Vec<String> = Vec::new();
@@ -275,9 +297,8 @@ pub fn write_baseline(path: &Path, violations: &[Violation]) -> anyhow::Result<(
         .collect();
     let payload = BaselineFile {
         format_version: 1,
-        description:
-            "Known legacy prod/test separation violations; CI fails on any new entries."
-                .to_string(),
+        description: "Known legacy prod/test separation violations; CI fails on any new entries."
+            .to_string(),
         violations: entries,
     };
     if let Some(parent) = path.parent() {

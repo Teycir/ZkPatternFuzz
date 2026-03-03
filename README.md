@@ -450,7 +450,7 @@ cargo clippy -- -D warnings
 cargo doc --open
 
 # Check repo hygiene
-python3 scripts/check_repo_hygiene.py --enforce
+cargo run --bin zkf_checks -- repo-hygiene --repo-root .
 ```
 
 ## Complementary Tools
