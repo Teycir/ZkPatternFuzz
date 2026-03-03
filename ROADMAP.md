@@ -415,7 +415,8 @@ Current status: ✅ enforced by `has_required_proof_artifacts()` + proof-status 
 - [x] Run post-reform Circom lane and publish before/after selector-mismatch + attack-stage comparison (`artifacts/post_reform_validation/20260303_post_reform_comparison.{md,json}`; mismatch rate `95.12% -> 0.00%`, attack-stage templates `2 -> 2`).
 - [x] Add strict output-lock preflight to standardized wrapper so stale lock files are removed and active lock owners fail fast (`scripts/run_fixed_target_deep_fuzz.sh`).
 - [x] Fix misleading lock-stage reporting: once output lock is acquired, startup now publishes `lifecycle_initialized` and explicit preflight stages (`preflight_readiness` / `preflight_backend`) so stalled runs are diagnosed against the true phase (`src/run_lifecycle.rs`, `src/run_campaign_flow.rs`, `src/run_chain_startup.rs`).
-- [ ] Complete post-reform Halo2 deep comparison: current attempts are still blocked (`cveX15` selector mismatch and `cveX16` stalled during `preflight_backend`), so full before/after publication remains pending.
+- [x] Retune `cveX15` selector signal terms for Rust/Halo2 zkevm context and verify it no longer selector-mismatches on standardized deep runs (`campaigns/cve/patterns/cveX15_scroll_missing_overflow_constraint.yaml`, validation log: `/home/teycir/zkpatternfuzz/logs/run_20260303_181302.log`).
+- [ ] Complete post-reform Halo2 deep comparison: remaining blocker is `cveX16` not advancing past `preflight_backend` to engine progress completion in the current deep lane, so full before/after publication remains pending.
 
 ### 8.7 Logic Error Triage (2026-02-23)
 - [x] Harden UTC date-boundary determinism in Circom flake streak tests so the two-day streak assertion cannot flake around midnight (`tests/test_circom_flake_gate.py`).
@@ -1295,14 +1296,16 @@ gh run watch
   - Impact: Critical - false sense of security; campaigns report 0 findings when the oracle is actually disabled.
 
 ### High Priority (P1)
-- [ ] **Bug 2**: Underconstrained attack runner is a no-op on empty corpus
+- [x] **Bug 2**: Underconstrained attack runner is a no-op on empty corpus
   - Issue: `src/fuzzer/engine/attack_runner_underconstrained.rs` falls back to random field elements when corpus is empty. For any non-trivial circuit (hashes, signatures, multiplications), random inputs fail constraint satisfaction with near-100% probability, so the oracle never processes a successful execution.
-  - Fix: Integrate solver-backed or witness-generator-backed seed creation for valid initial inputs, or enforce non-empty corpus requirement for this attack type.
+  - Fix (2026-03-03): underconstrained runner now seeds witness candidates from corpus first (with public-input pinning applied), hard-fails when corpus seeds are missing, and hard-fails when execution attempts yield zero successful witness pairs (`src/fuzzer/engine/attack_runner_underconstrained.rs`).
+  - Validation (2026-03-03): `cargo test --test test_underconstrained_attack_runner --quiet` (new regression with an always-unsatisfiable fixture circuit: `tests/fixtures/underconstrained_unsat.circom`).
   - Impact: High - zero bug-finding capacity on complex circuits without a pre-seeded corpus.
 
-- [ ] **Bug 3**: `SpecInference` oracle discards output-wire post-conditions
+- [x] **Bug 3**: `SpecInference` oracle discards output-wire post-conditions
   - Issue: `src/oracles/spec_inference.rs` `is_actionable` filter rejects inferred specs where `wire_index >= num_inputs`, excluding all output-wire invariants from detection (e.g., "output should always be boolean").
-  - Fix: Allow `wire_index` to cover output signal indices, or remove the filter when the executor handles output indexing correctly.
+  - Fix (2026-03-03): `is_actionable` now accepts valid output-wire indices (`num_inputs + num_outputs` bound), output-wire specs can generate candidate violations via input perturbation, and acceptance checks now confirm the inferred spec is actually violated after execution before emitting a finding (`src/oracles/spec_inference.rs`).
+  - Validation (2026-03-03): `cargo test --test test_oracles_spec_inference --quiet` (new regressions for output-wire constant spec retention + output-wire violation candidate generation in `tests/test_oracles_spec_inference.rs`).
   - Impact: High - significant recall gap for bugs that manifest as output-wire constraint violations.
 
 - [ ] **Bug 4**: Taint analysis over-taints due to selector/MUX-unaware propagation

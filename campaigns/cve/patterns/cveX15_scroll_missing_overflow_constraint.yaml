@@ -7,14 +7,14 @@ patterns:
     message: 'Scroll zkEVM context detected'
   - id: scroll_overflow_terms
     kind: regex
-    pattern: 'overflow|carry'
+    pattern: 'overflow|carry|overflowing_|checked_(add|sub|mul)|wrapping_(add|sub|mul)|saturating_(add|sub|mul)'
     group: signal
     message: 'Overflow/carry arithmetic context detected'
-  - id: scroll_pil_constraint_terms
+  - id: scroll_arithmetic_constraint_terms
     kind: regex
-    pattern: '\bPIL\b|constraint'
+    pattern: 'constraint|assert|addmod|mulmod|range[_-]?check'
     group: signal
-    message: 'PIL constraint context detected'
+    message: 'Arithmetic constraint context detected'
 
 selector_policy:
   k_of_n: 2

@@ -157,6 +157,8 @@ pub struct SpecInferenceOracle {
     confidence_threshold: f64,
     /// Number of violation attempts per spec
     violation_attempts: usize,
+    /// Optional cap on inferred specs to validate (runtime guardrail)
+    max_specs: Option<usize>,
     /// Fraction of samples reserved for validation
     validation_split: f64,
     /// Minimum fraction of validation samples that must satisfy the spec
@@ -188,6 +190,7 @@ impl SpecInferenceOracle {
             sample_count: 500,
             confidence_threshold: 0.9,
             violation_attempts: 100,
+            max_specs: None,
             validation_split: 0.2,
             validation_threshold: 0.98,
             min_samples: 30,
@@ -210,6 +213,12 @@ impl SpecInferenceOracle {
     /// Set violation attempts per spec (clamped to at least 1)
     pub fn with_violation_attempts(mut self, attempts: usize) -> Self {
         self.violation_attempts = attempts.max(1);
+        self
+    }
+
+    /// Cap how many inferred specs are tested for violations.
+    pub fn with_max_specs(mut self, max_specs: usize) -> Self {
+        self.max_specs = Some(max_specs.max(1));
         self
     }
 
@@ -275,7 +284,7 @@ impl SpecInferenceOracle {
         specs.retain(|s| s.confidence() >= self.confidence_threshold);
 
         // Remove specs that cannot be acted upon
-        specs.retain(|s| self.is_actionable(s, num_inputs));
+        specs.retain(|s| self.is_actionable(s, num_inputs, num_outputs));
 
         // Validate on holdout samples to reduce false positives
         if !validation_samples.is_empty() {
@@ -569,6 +578,9 @@ impl SpecInferenceOracle {
                 if *wire_index < witness.len() {
                     witness[*wire_index] = FieldElement::zero();
                     modified = true;
+                } else {
+                    // Output-wire constraints are exercised by perturbing an input witness.
+                    modified = self.perturb_random_input(&mut witness, rng);
                 }
             }
             InferredSpec::Equality { wire_a, wire_b, .. } => {
@@ -580,6 +592,8 @@ impl SpecInferenceOracle {
                     }
                     witness[*wire_b] = new_value;
                     modified = true;
+                } else {
+                    modified = self.perturb_random_input(&mut witness, rng);
                 }
             }
             InferredSpec::Inequality { wire_a, wire_b, .. } => {
@@ -589,6 +603,8 @@ impl SpecInferenceOracle {
                         witness[*wire_b] = witness[*wire_a].clone();
                         modified = true;
                     }
+                } else {
+                    modified = self.perturb_random_input(&mut witness, rng);
                 }
             }
             InferredSpec::ConstantValue {
@@ -598,6 +614,9 @@ impl SpecInferenceOracle {
                     // Set to a different value
                     witness[*wire_index] = value.add(&FieldElement::one());
                     modified = true;
+                } else {
+                    // Output-wire constants require input perturbation and post-exec checking.
+                    modified = self.perturb_random_input(&mut witness, rng);
                 }
             }
             _ => return None,
@@ -608,6 +627,20 @@ impl SpecInferenceOracle {
         } else {
             None
         }
+    }
+
+    fn perturb_random_input(&self, witness: &mut [FieldElement], rng: &mut impl Rng) -> bool {
+        if witness.is_empty() {
+            return false;
+        }
+        let idx = rng.gen_range(0..witness.len());
+        let delta = FieldElement::from_u64(rng.gen_range(1..1024));
+        let mut candidate = witness[idx].add(&delta);
+        if candidate == witness[idx] {
+            candidate = candidate.add(&FieldElement::one());
+        }
+        witness[idx] = candidate;
+        true
     }
 
     fn split_samples<'a>(
@@ -628,19 +661,22 @@ impl SpecInferenceOracle {
         (&samples[..split_idx], &samples[split_idx..])
     }
 
-    fn is_actionable(&self, spec: &InferredSpec, num_inputs: usize) -> bool {
+    fn is_actionable(&self, spec: &InferredSpec, num_inputs: usize, num_outputs: usize) -> bool {
+        let total_wires = num_inputs.saturating_add(num_outputs);
         match spec {
             InferredSpec::RangeCheck { input_index, .. } => *input_index < num_inputs,
             InferredSpec::BitwiseConstraint { input_index, .. } => *input_index < num_inputs,
-            InferredSpec::NonZero { wire_index, .. } => *wire_index < num_inputs,
-            InferredSpec::ConstantValue { wire_index, .. } => *wire_index < num_inputs,
+            InferredSpec::NonZero { wire_index, .. } => *wire_index < total_wires,
+            InferredSpec::ConstantValue { wire_index, .. } => *wire_index < total_wires,
             InferredSpec::Equality { wire_a, wire_b, .. }
             | InferredSpec::Inequality { wire_a, wire_b, .. } => {
-                *wire_a < num_inputs && *wire_b < num_inputs
+                *wire_a < total_wires && *wire_b < total_wires
             }
-            InferredSpec::LinearRelation { input_indices, .. } => {
-                input_indices.iter().all(|idx| *idx < num_inputs)
-            }
+            InferredSpec::LinearRelation {
+                input_indices,
+                output_index,
+                ..
+            } => input_indices.iter().all(|idx| *idx < num_inputs) && *output_index < num_outputs,
         }
     }
 
@@ -700,7 +736,12 @@ impl SpecInferenceOracle {
                 Some(value <= max)
             }
             InferredSpec::NonZero { wire_index, .. } => {
-                let value = sample.inputs.get(*wire_index)?;
+                let value = if *wire_index < num_inputs {
+                    sample.inputs.get(*wire_index)?
+                } else {
+                    let out_idx = wire_index.saturating_sub(num_inputs);
+                    sample.outputs.get(out_idx)?
+                };
                 Some(!value.is_zero())
             }
             InferredSpec::ConstantValue {
@@ -799,11 +840,30 @@ impl SpecInferenceOracle {
         }
 
         // Infer specs
-        let specs = self.infer_specs(&samples);
+        let mut specs = self.infer_specs(&samples);
+        let inferred_total = specs.len();
+        if let Some(max_specs) = self.max_specs {
+            if specs.len() > max_specs {
+                tracing::warn!(
+                    "Spec inference max-spec cap applied: inferred {} -> testing {}",
+                    specs.len(),
+                    max_specs
+                );
+                specs.truncate(max_specs);
+            }
+        }
 
-        tracing::info!("Inferred {} specifications", specs.len());
+        tracing::info!(
+            "Inferred {} specifications (testing {})",
+            inferred_total,
+            specs.len()
+        );
 
         let start = Instant::now();
+        let num_inputs = samples
+            .first()
+            .map(|sample| sample.inputs.len())
+            .unwrap_or_default();
 
         // Test each spec
         for (spec_idx, spec) in specs.iter().enumerate() {
@@ -834,6 +894,15 @@ impl SpecInferenceOracle {
                 // If circuit accepts the violation, we found a bug
                 let result = executor.execute(&violation).await;
                 if result.success {
+                    let execution_sample = ExecutionSample {
+                        inputs: violation.clone(),
+                        outputs: result.outputs.clone(),
+                    };
+                    let spec_violated =
+                        matches!(self.spec_holds(spec, &execution_sample, num_inputs), Some(false));
+                    if !spec_violated {
+                        continue;
+                    }
                     findings.push(Finding {
                         attack_type: AttackType::SpecInference,
                         severity: Severity::High,

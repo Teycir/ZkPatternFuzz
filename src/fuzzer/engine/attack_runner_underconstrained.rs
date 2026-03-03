@@ -88,24 +88,53 @@ impl FuzzingEngine {
             return Ok(());
         }
 
-        // Generate fixed public inputs that will be shared across all test cases
+        let corpus_seed_inputs = self.collect_corpus_inputs(witness_pairs.max(1));
+        if corpus_seed_inputs.is_empty() {
+            anyhow::bail!(
+                "Underconstrained attack requires non-empty corpus seeds to avoid \
+                 random invalid witness no-op behavior; provide seed inputs or run a \
+                 seeding phase before underconstrained detection."
+            );
+        }
+
+        // Generate fixed public inputs that will be shared across all test cases.
+        // Prefer a corpus-derived base witness over raw random generation.
         let fixed_public = if public_input_positions.is_empty() {
             None
         } else if let Some(fixed) = Self::parse_fixed_public_inputs(config, &public_input_positions)
         {
             Some(fixed)
         } else {
-            let base = self.generate_test_case();
+            let base_inputs = corpus_seed_inputs
+                .first()
+                .cloned()
+                .unwrap_or_else(|| self.generate_test_case().inputs);
             let fixed: Vec<(usize, FieldElement)> = public_input_positions
                 .iter()
-                .filter_map(|&pos| base.inputs.get(pos).map(|val| (pos, val.clone())))
+                .filter_map(|&pos| base_inputs.get(pos).map(|val| (pos, val.clone())))
                 .collect();
             Some(fixed)
         };
 
         let mut test_cases = Vec::with_capacity(witness_pairs);
+        for inputs in corpus_seed_inputs.into_iter().take(witness_pairs) {
+            let mut tc = TestCase {
+                inputs,
+                expected_output: None,
+                metadata: TestMetadata::default(),
+            };
+            if let Some(ref fixed) = fixed_public {
+                for (pos, val) in fixed {
+                    if *pos < tc.inputs.len() {
+                        tc.inputs[*pos] = val.clone();
+                    }
+                }
+            }
+            test_cases.push(tc);
+        }
+
         let mut timed_out = false;
-        for _ in 0..witness_pairs {
+        while test_cases.len() < witness_pairs {
             if self.wall_clock_timeout_reached() {
                 tracing::warn!(
                     "Stopping underconstrained attack witness generation early: wall-clock timeout reached"
@@ -140,6 +169,8 @@ impl FuzzingEngine {
         let mut output_map: std::collections::HashMap<Vec<u8>, Vec<usize>> =
             std::collections::HashMap::with_capacity(num_pairs / 2);
         let mut chunk_start = 0usize;
+        let mut successful_executions = 0usize;
+        let mut failed_executions = 0usize;
 
         'execution_loop: while chunk_start < test_cases.len() {
             if self.wall_clock_timeout_reached() {
@@ -188,8 +219,11 @@ impl FuzzingEngine {
                 self.observe_execution_result(&result, exec_time);
 
                 if result.success {
+                    successful_executions = successful_executions.saturating_add(1);
                     let output_hash = self.hash_output(&result.outputs);
                     output_map.entry(output_hash).or_default().push(idx);
+                } else {
+                    failed_executions = failed_executions.saturating_add(1);
                 }
 
                 if let Some(p) = progress {
@@ -206,6 +240,15 @@ impl FuzzingEngine {
             }
 
             chunk_start = chunk_end;
+        }
+
+        if !timed_out && successful_executions == 0 {
+            anyhow::bail!(
+                "Underconstrained attack could not find any executable witness pairs \
+                 (attempted={}, failed={}); seed corpus with valid witnesses for this target.",
+                test_cases.len(),
+                failed_executions
+            );
         }
 
         // Check for collisions

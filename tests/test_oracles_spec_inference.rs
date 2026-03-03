@@ -91,8 +91,33 @@ fn test_confidence_threshold_filters_specs() {
 }
 
 #[test]
-fn test_constant_output_violation_is_not_actionable() {
+fn test_infer_specs_keeps_constant_output_specs() {
     let oracle = SpecInferenceOracle::new();
+    let samples: Vec<ExecutionSample> = (0..100)
+        .map(|i| ExecutionSample {
+            inputs: vec![FieldElement::from_u64(i), FieldElement::from_u64(i + 1)],
+            outputs: vec![FieldElement::one()],
+        })
+        .collect();
+
+    let specs = oracle.infer_specs(&samples);
+    let has_output_constant = specs.iter().any(|spec| {
+        matches!(
+            spec,
+            InferredSpec::ConstantValue {
+                wire_index,
+                value,
+                ..
+            } if *wire_index == 2 && *value == FieldElement::one()
+        )
+    });
+
+    assert!(has_output_constant);
+}
+
+#[test]
+fn test_constant_output_violation_generates_input_mutation() {
+    let oracle = SpecInferenceOracle::new().with_violation_attempts(32);
     let spec = InferredSpec::ConstantValue {
         wire_index: 5,
         value: FieldElement::one(),
@@ -101,5 +126,11 @@ fn test_constant_output_violation_is_not_actionable() {
     let base = vec![FieldElement::zero(); 2];
     let mut rng = rand::rngs::StdRng::seed_from_u64(1);
     let violations = oracle.generate_violations(&spec, &base, &mut rng);
-    assert!(violations.is_empty());
+
+    assert!(!violations.is_empty());
+    assert!(
+        violations
+            .iter()
+            .all(|candidate| candidate.len() == base.len() && candidate != &base)
+    );
 }

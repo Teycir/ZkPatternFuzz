@@ -59,6 +59,7 @@ tests/noir_projects/*/target/.zkfuzz_build.lock
 tests/noir_projects/*/src/target/.zkfuzz_build.lock
 tests/noir_projects/*/tests/
 tests/halo2_specs/target/
+tests/fixtures/build/
 tests/r1cs_parser_test.rs
 tests/semantic_oracles_test.rs
 
