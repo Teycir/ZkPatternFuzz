@@ -40,6 +40,57 @@ fn test_circom_structure_inference() {
 }
 
 #[test]
+fn test_circom_structure_inference_from_usage_patterns() {
+    let source = r#"
+            signal input a0;
+            signal input a1;
+            signal input a2[3];
+            signal input a3[2];
+            signal output out;
+
+            a0 * (a0 - 1) === 0;
+            tmp <== poseidon(a1, 7);
+            flag <== a2[0] * (a2[0] - 1);
+            root <== merkle_compute(a3[0], a3[1]);
+        "#;
+
+    let structures = StructureAwareMutator::infer_circom_structure(source);
+    assert_eq!(
+        structures,
+        vec![
+            InputStructure::Boolean,
+            InputStructure::HashPreimage { num_elements: 2 },
+            InputStructure::BitDecomposition { bits: 3 },
+            InputStructure::MerklePath { depth: 2 },
+        ]
+    );
+}
+
+#[test]
+fn test_noir_structure_inference_from_type_and_usage() {
+    let source = r#"
+        fn main(p0: Field, p1: [Field; 4], p2: bool, p3: u32, p4: [bool; 8]) {
+            assert(p0 == 0 || p0 == 1);
+            let _h = poseidon(p0, p3 as Field);
+            let _root = merkle_root(p1);
+            assert(p2 == true);
+        }
+    "#;
+
+    let structures = StructureAwareMutator::infer_noir_structure(source);
+    assert_eq!(
+        structures,
+        vec![
+            InputStructure::Boolean,
+            InputStructure::MerklePath { depth: 4 },
+            InputStructure::Boolean,
+            InputStructure::Integer { bits: 32 },
+            InputStructure::BitDecomposition { bits: 8 },
+        ]
+    );
+}
+
+#[test]
 fn test_splice() {
     let mut rng = StdRng::seed_from_u64(42);
     let a = vec![FieldElement::from_u64(1), FieldElement::from_u64(2)];

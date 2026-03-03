@@ -845,15 +845,18 @@ impl ConstraintInferenceEngine {
             }
 
             let mut candidate_inputs = seed_inputs.clone();
+            let mut fixed_input_indices = HashSet::new();
 
             if constraint.involved_wires.is_empty() {
                 let copy_len = violation.len().min(candidate_inputs.len());
-                for (dst, src) in candidate_inputs
+                for (wire_idx, (dst, src)) in candidate_inputs
                     .iter_mut()
                     .zip(violation.iter())
                     .take(copy_len)
+                    .enumerate()
                 {
                     *dst = src.clone();
+                    fixed_input_indices.insert(wire_idx);
                 }
                 if violation.len() > candidate_inputs.len() {
                     tracing::warn!(
@@ -874,6 +877,7 @@ impl ConstraintInferenceEngine {
                     };
                     if input_idx < candidate_inputs.len() && wire < violation.len() {
                         candidate_inputs[input_idx] = violation[wire].clone();
+                        fixed_input_indices.insert(input_idx);
                     } else {
                         skipped_wires = skipped_wires.saturating_add(1);
                     }
@@ -905,6 +909,37 @@ impl ConstraintInferenceEngine {
                     continue;
                 }
             };
+            let mut result = result;
+            if !result.success && !has_internal_wires {
+                // Naive overlay can break dependent wires. Before rejecting, run a bounded
+                // witness-repair search that preserves the intended violation inputs.
+                if let Some(repaired_inputs) = self.find_violation_preserving_inputs(
+                    executor,
+                    &seed_inputs,
+                    &candidate_inputs,
+                    &fixed_input_indices,
+                    64,
+                ) {
+                    candidate_inputs = repaired_inputs;
+                    result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        executor.execute_sync(&candidate_inputs)
+                    })) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            tracing::error!(
+                                "Execution panicked during repaired violation confirmation: {:?}",
+                                e
+                            );
+                            constraint.confirmation = ViolationConfirmation::Rejected;
+                            continue;
+                        }
+                    };
+                } else {
+                    constraint.confirmation = ViolationConfirmation::Inconclusive;
+                    constraint.violation_witness = Some(candidate_inputs);
+                    continue;
+                }
+            }
 
             if !result.success {
                 constraint.confirmation = if has_internal_wires {
@@ -936,6 +971,84 @@ impl ConstraintInferenceEngine {
                 constraint.confirmation = ViolationConfirmation::Rejected;
             }
         }
+    }
+
+    fn find_violation_preserving_inputs(
+        &self,
+        executor: &dyn CircuitExecutor,
+        seed_inputs: &[FieldElement],
+        violation_inputs: &[FieldElement],
+        fixed_input_indices: &HashSet<usize>,
+        max_attempts: usize,
+    ) -> Option<Vec<FieldElement>> {
+        if violation_inputs.is_empty() || max_attempts == 0 {
+            return None;
+        }
+
+        let mut seed = seed_inputs.to_vec();
+        if seed.len() < violation_inputs.len() {
+            seed.resize(violation_inputs.len(), FieldElement::zero());
+        } else if seed.len() > violation_inputs.len() {
+            seed.truncate(violation_inputs.len());
+        }
+        for &idx in fixed_input_indices {
+            if idx < seed.len() {
+                seed[idx] = violation_inputs[idx].clone();
+            }
+        }
+
+        let mut candidates: Vec<Vec<FieldElement>> = Vec::new();
+        candidates.push(seed.clone());
+        candidates.push(violation_inputs.to_vec());
+
+        let fixed_values: Vec<FieldElement> = fixed_input_indices
+            .iter()
+            .filter_map(|&idx| violation_inputs.get(idx).cloned())
+            .collect();
+        if !fixed_values.is_empty() {
+            for value in &fixed_values {
+                let mut all = seed.clone();
+                for idx in 0..all.len() {
+                    if !fixed_input_indices.contains(&idx) {
+                        all[idx] = value.clone();
+                    }
+                }
+                candidates.push(all);
+            }
+
+            for idx in 0..seed.len() {
+                if fixed_input_indices.contains(&idx) {
+                    continue;
+                }
+                for value in &fixed_values {
+                    let mut candidate = seed.clone();
+                    candidate[idx] = value.clone();
+                    candidates.push(candidate);
+                }
+            }
+        }
+
+        for idx in 0..seed.len() {
+            if fixed_input_indices.contains(&idx) {
+                continue;
+            }
+            let mut zero_case = seed.clone();
+            zero_case[idx] = FieldElement::zero();
+            candidates.push(zero_case);
+
+            let mut one_case = seed.clone();
+            one_case[idx] = FieldElement::one();
+            candidates.push(one_case);
+        }
+
+        for candidate in candidates.into_iter().take(max_attempts) {
+            let result = executor.execute_sync(&candidate);
+            if result.success {
+                return Some(candidate);
+            }
+        }
+
+        None
     }
 
     /// Convert implied constraints to findings

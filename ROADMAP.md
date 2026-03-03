@@ -1315,19 +1315,22 @@ gh run watch
   - Impact: High - taint-based information-leakage claims are unreliable for circuits with conditional logic.
 
 ### Medium Priority (P2)
-- [ ] **Bug 5**: Constraint inference rejects valid findings due to naive witness overlay
+- [x] **Bug 5**: Constraint inference rejects valid findings due to naive witness overlay
   - Issue: `crates/zk-attacks/src/constraint_inference.rs` violation confirmation overlays violation values onto a seed witness without solving dependent wires, causing structurally-invalid witnesses and `ViolationConfirmation::Rejected` for real missing-constraint findings.
-  - Fix: Use Z3 or minimal R1CS solver to re-solve remaining wires after injecting violation values, or relax rejection criteria to allow partial-witness violations.
+  - Fix (2026-03-03): violation confirmation now performs bounded witness repair before rejecting: it preserves violation-fixed inputs, searches deterministic executable candidates for non-fixed inputs, and only emits `Rejected` when an executable violating witness is disproved; if no executable witness can be reconstructed within bounds, result is marked `Inconclusive` instead of false-negative `Rejected` (`crates/zk-attacks/src/constraint_inference.rs`).
+  - Validation (2026-03-03): `cargo test -p zk-attacks constraint_inference --quiet`, `cargo test -p zk-attacks --quiet` (includes new regressions in `crates/zk-attacks/src/constraint_inference_tests.rs` for overlay repair success + inconclusive-on-repair-failure).
   - Impact: Medium - reduces recall of the constraint inference engine on circuits with arithmetic dependencies.
 
-- [ ] **Bug 6**: Structure-aware mutation relies on regex variable name matching
+- [x] **Bug 6**: Structure-aware mutation relies on regex variable name matching
   - Issue: `crates/zk-fuzzer-core/src/structure_aware.rs` infers signal types via regex on names (`sig`, `hash`, `merkle`). Fails on minified, obfuscated, or non-English targets, degrading to random field noise.
-  - Fix: Integrate with compiler ABI/debug artifacts (Circom `.sym` files, Noir ABI JSON) or infer types from usage patterns (e.g., "this signal feeds a Poseidon template").
+  - Fix (2026-03-03): inference now prioritizes usage/type semantics over name regex: Circom/Noir input typing inspects boolean constraints, hash/merkle/signature/public-key/nullifier call-site usage, and Noir `fn main` typed parameter parsing (including array element typing). Name-based matching is retained only as fallback (`crates/zk-fuzzer-core/src/structure_aware.rs`).
+  - Validation (2026-03-03): `cargo test -p zk-fuzzer-core structure_aware --quiet`, `cargo test -p zk-fuzzer-core --quiet` (includes new regressions in `crates/zk-fuzzer-core/src/structure_aware_tests.rs` for usage-driven Circom inference and type+usage Noir inference with obfuscated parameter names).
   - Impact: Medium - mutation quality degrades silently on targets without English-convention naming.
 
-- [ ] **Bug 7**: Soundness attack byte-flip can produce invalid field elements
+- [x] **Bug 7**: Soundness attack byte-flip can produce invalid field elements
   - Issue: `src/fuzzer/engine/attack_runner_soundness.rs` last-byte XOR mutation (`bytes[31] ^= 0x01`) can exceed BN254 modulus, causing verifier rejection for encoding reasons rather than testing actual soundness.
-  - Fix: Use `mutate_field_element` with modular reduction, or add explicit modulus check after byte manipulation.
+  - Fix (2026-03-03): forced "at-least-one-mutation" path now uses bounded `mutate_field_element` retries (modulus-safe by design) and only falls back to byte tweak through `FieldElement::from_bytes_reduced`, guaranteeing canonical field encoding before verifier checks (`src/fuzzer/engine/attack_runner_soundness.rs`).
+  - Validation (2026-03-03): `cargo test --test integration_tests --quiet`.
   - Impact: Medium - some soundness test iterations are wasted on invalid-encoding rejections instead of real soundness probes.
 
 ---

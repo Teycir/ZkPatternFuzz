@@ -121,9 +121,30 @@ impl FuzzingEngine {
             let mutated_public = if mutated_public == valid_public {
                 let mut forced = valid_public.clone();
                 let idx = self.core.rng_mut().gen_range(0..forced.len());
-                let mut bytes = forced[idx].0;
-                bytes[31] ^= 0x01;
-                forced[idx] = FieldElement(bytes);
+                let original = forced[idx].clone();
+                let mut candidate = original.clone();
+                {
+                    let rng = self.core.rng_mut();
+                    for _ in 0..8 {
+                        candidate = mutate_field_element(&original, rng);
+                        if candidate != original {
+                            break;
+                        }
+                    }
+                }
+                if candidate == original {
+                    let mut bytes = original.0;
+                    bytes[31] ^= 0x01;
+                    candidate = FieldElement::from_bytes_reduced(&bytes);
+                    if candidate == original {
+                        candidate = if original == FieldElement::zero() {
+                            FieldElement::one()
+                        } else {
+                            FieldElement::zero()
+                        };
+                    }
+                }
+                forced[idx] = candidate;
                 forced
             } else {
                 mutated_public
