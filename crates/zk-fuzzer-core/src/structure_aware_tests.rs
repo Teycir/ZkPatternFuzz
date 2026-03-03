@@ -67,6 +67,43 @@ fn test_circom_structure_inference_from_usage_patterns() {
 }
 
 #[test]
+fn test_circom_structure_inference_ignores_inline_comments() {
+    let source = r#"
+            signal input a0; // boolean selector
+            signal private input a1[2]; // merkle path fragment
+
+            a0 * (a0 - 1) === 0;
+            out <== merkle_verify(a1[0], a1[1]);
+        "#;
+
+    let structures = StructureAwareMutator::infer_circom_structure(source);
+    assert_eq!(
+        structures,
+        vec![
+            InputStructure::Boolean,
+            InputStructure::MerklePath { depth: 2 },
+        ]
+    );
+}
+
+#[test]
+fn test_circom_usage_inference_ignores_inline_usage_comments() {
+    let source = r#"
+            signal input x0;
+            signal input x1;
+
+            out <== x0; // merkle hash poseidon
+            out2 <== x1 + 1;
+        "#;
+
+    let structures = StructureAwareMutator::infer_circom_structure(source);
+    assert_eq!(
+        structures,
+        vec![InputStructure::Field, InputStructure::Field]
+    );
+}
+
+#[test]
 fn test_noir_structure_inference_from_type_and_usage() {
     let source = r#"
         fn main(p0: Field, p1: [Field; 4], p2: bool, p3: u32, p4: [bool; 8]) {

@@ -32,7 +32,11 @@ fn test_generate_shell() {
 
     let script = generator.generate(&finding, PoCFormat::Shell).unwrap();
 
-    assert!(script.contains("#!/bin/bash"));
+    assert!(
+        script.starts_with("#!/usr/bin/env bash\n") || script.starts_with("#!/bin/bash\n"),
+        "unexpected shell shebang: {}",
+        script.lines().next().unwrap_or_default()
+    );
     assert!(script.contains("Underconstrained"));
     assert!(script.contains("input_a.json"));
     assert!(script.contains("input_b.json"));

@@ -75,19 +75,9 @@ impl StructureAwareMutator {
         let mut structures = Vec::new();
 
         for line in source.lines() {
-            let trimmed = line.trim();
-            if !trimmed.starts_with("signal input") && !trimmed.starts_with("signal private input")
-            {
+            let Some((name, array_len)) = Self::parse_circom_input_declaration(line) else {
                 continue;
-            }
-
-            let token = trimmed.split_whitespace().last().unwrap_or_default();
-            let token = token.trim_end_matches(';');
-            let name = Self::extract_signal_name(token).to_lowercase();
-            if name.is_empty() {
-                continue;
-            }
-            let array_len = Self::extract_array_length(token);
+            };
             let usage = Self::collect_usage_lines(&source_lower, &name);
 
             let inferred = Self::infer_by_usage_and_type(&name, &usage, array_len, None)
@@ -123,6 +113,34 @@ impl StructureAwareMutator {
             .unwrap_or_default()
             .trim()
             .to_string()
+    }
+
+    fn parse_circom_input_declaration(line: &str) -> Option<(String, Option<usize>)> {
+        let without_comment = line.split("//").next().unwrap_or_default().trim();
+        if without_comment.is_empty() {
+            return None;
+        }
+
+        let (prefix, remainder) = if let Some(rest) = without_comment.strip_prefix("signal input") {
+            ("signal input", rest)
+        } else if let Some(rest) = without_comment.strip_prefix("signal private input") {
+            ("signal private input", rest)
+        } else {
+            return None;
+        };
+        let _ = prefix;
+
+        let declaration = remainder.trim().trim_end_matches(';').trim();
+        if declaration.is_empty() {
+            return None;
+        }
+        let token = declaration.split_whitespace().next().unwrap_or_default();
+        let name = Self::extract_signal_name(token).to_lowercase();
+        if name.is_empty() {
+            return None;
+        }
+        let array_len = Self::extract_array_length(token);
+        Some((name, array_len))
     }
 
     fn extract_array_length(line: &str) -> Option<usize> {
@@ -408,12 +426,10 @@ impl StructureAwareMutator {
     fn collect_usage_lines<'a>(source_lower: &'a str, input_name: &str) -> Vec<&'a str> {
         source_lower
             .lines()
-            .map(str::trim)
+            .map(|line| line.split("//").next().unwrap_or_default().trim())
             .filter(|line| !line.is_empty())
             .filter(|line| {
-                !line.starts_with("signal input")
-                    && !line.starts_with("signal private input")
-                    && !line.starts_with("//")
+                !line.starts_with("signal input") && !line.starts_with("signal private input")
             })
             .filter(|line| Self::contains_identifier(line, input_name))
             .collect()

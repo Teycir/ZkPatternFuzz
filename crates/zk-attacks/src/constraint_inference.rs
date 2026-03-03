@@ -991,7 +991,9 @@ impl ConstraintInferenceEngine {
         } else if seed.len() > violation_inputs.len() {
             seed.truncate(violation_inputs.len());
         }
-        for &idx in fixed_input_indices {
+        let mut fixed_indices: Vec<usize> = fixed_input_indices.iter().copied().collect();
+        fixed_indices.sort_unstable();
+        for &idx in &fixed_indices {
             if idx < seed.len() {
                 seed[idx] = violation_inputs[idx].clone();
             }
@@ -1001,9 +1003,9 @@ impl ConstraintInferenceEngine {
         candidates.push(seed.clone());
         candidates.push(violation_inputs.to_vec());
 
-        let fixed_values: Vec<FieldElement> = fixed_input_indices
+        let fixed_values: Vec<FieldElement> = fixed_indices
             .iter()
-            .filter_map(|&idx| violation_inputs.get(idx).cloned())
+            .filter_map(|idx| violation_inputs.get(*idx).cloned())
             .collect();
         if !fixed_values.is_empty() {
             for value in &fixed_values {
@@ -1042,9 +1044,17 @@ impl ConstraintInferenceEngine {
         }
 
         for candidate in candidates.into_iter().take(max_attempts) {
-            let result = executor.execute_sync(&candidate);
-            if result.success {
-                return Some(candidate);
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                executor.execute_sync(&candidate)
+            }));
+            match result {
+                Ok(run) if run.success => return Some(candidate),
+                Ok(_) => {}
+                Err(_) => {
+                    tracing::debug!(
+                        "Execution panicked during violation-preserving witness repair candidate"
+                    );
+                }
             }
         }
 
