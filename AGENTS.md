@@ -99,12 +99,15 @@ To avoid ad-hoc command drift, agents must use the standardized wrappers for rou
 - `scripts/run_std_smoke.sh`
 - `scripts/run_std_standard.sh`
 - `scripts/run_std_deep.sh`
+- `scripts/monitor_std_run.sh` (for all run monitoring requests)
 
 ### Agent Rule
 - For "smoke", "standard", or "deep" requests, do **not** rebuild CLI command-lines manually.
 - Run the matching wrapper script directly.
-- Only override `TARGET_NAME` when explicitly requested by the operator.
+- Do not pass runtime flags or env overrides to wrappers.
+- Change only the `.env` profile bindings (`ZKF_STD_TARGET_*`) when target changes are requested.
 - Keep output method/path stable via env (`ZKF_SCAN_OUTPUT_ROOT`) unless operator explicitly asks to change it.
+- Rely on automatic console monitoring emitted by the run scripts in all cases.
 
 ### Escalation Rule
 - If a run fails due to sandbox/write constraints, retry with required execution permissions.

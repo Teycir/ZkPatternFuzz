@@ -109,6 +109,7 @@ Use fixed wrappers instead of rebuilding long commands:
 scripts/run_std_smoke.sh
 scripts/run_std_standard.sh
 scripts/run_std_deep.sh
+scripts/monitor_std_run.sh
 ```
 
 Target bindings live in `.env`:
@@ -123,8 +124,10 @@ Recommended profile mapping:
 
 Operational rules:
 - Keep using the same wrapper for the same run class.
-- Change only the target binding variables in `.env` (or set `TARGET_NAME=...` per invocation).
+- Do not pass runtime flags/overrides to wrappers.
+- Change only the target binding variables in `.env`.
 - Keep output path stable through `ZKF_SCAN_OUTPUT_ROOT` in `.env`.
+- Run scripts print step/monitor progress automatically on console.
 
 Examples:
 
@@ -132,8 +135,8 @@ Examples:
 # default bindings from .env
 scripts/run_std_standard.sh
 
-# one-off target override without editing .env
-TARGET_NAME=ext017_email_wallet_account_creation scripts/run_std_standard.sh
+# monitor latest run signals/session progress
+scripts/monitor_std_run.sh
 ```
 
 ## AI-Assisted Workflow

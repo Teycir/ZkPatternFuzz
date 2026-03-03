@@ -32,14 +32,16 @@ scripts/run_std_standard.sh
 scripts/run_std_deep.sh
 ```
 
-Optional explicit target override:
+Monitoring is strict and always-on in the run scripts (console step lines + monitor lines).
+If you want a second console attached to the same signals:
 
 ```bash
-TARGET_NAME=ext017_email_wallet_account_creation scripts/run_std_standard.sh
+scripts/monitor_std_run.sh
 ```
 
 ## Operator Rule
 
 - For routine runs, do not handcraft long `zkpatternfuzz` commands.
 - Use one of the 3 wrappers.
-- Change only the `.env` target bindings or `TARGET_NAME` when needed.
+- Do not pass flags/overrides to wrappers.
+- Change only the 3 target bindings in `.env`.

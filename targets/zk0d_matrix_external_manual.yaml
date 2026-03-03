@@ -83,8 +83,8 @@ targets:
         key: halo2
         known_issue_count: 35
   - name: ext006_zkevm_circuits_cargo
-    target_circuit: /media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits/zkevm-circuits/Cargo.toml
-    main_component: zkevm
+    target_circuit: /media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits/integration-tests/Cargo.toml
+    main_component: gen_blockchain_data
     framework: halo2
     alias: always
     enabled: true
