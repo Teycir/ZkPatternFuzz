@@ -38,6 +38,8 @@ const HALO2_RUSTUP_TOOLCHAIN_CASCADE_ENV: &str = "ZK_FUZZER_HALO2_RUSTUP_TOOLCHA
 const HALO2_SVM_RELEASES_LIST_JSON_ENV: &str = "SVM_RELEASES_LIST_JSON";
 const HALO2_SVM_RELEASES_LIST_JSON_CANDIDATES_ENV: &str =
     "ZK_FUZZER_HALO2_SVM_RELEASES_LIST_JSON_CANDIDATES";
+const ZKEVM_OPENZEPPELIN_REQUIRED_REL: &str =
+    "contracts/vendor/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 
 fn halo2_total_timeout_budget() -> Option<std::time::Duration> {
     let raw = std::env::var(HALO2_TOTAL_TIMEOUT_SECS_ENV).ok()?;
@@ -1389,6 +1391,27 @@ impl Halo2Target {
         let info = self.get_circuit_info_from_binary(project_dir);
 
         self.metadata = Some(info);
+        let extracted = self.load_plonk_constraints();
+        if let Some(metadata) = self.metadata.as_mut() {
+            if metadata.num_constraints == 0 && !extracted.constraints.is_empty() {
+                metadata.num_constraints = extracted.constraints.len();
+                tracing::info!(
+                    "Backfilled Halo2 metadata constraint count from --constraints export: {}",
+                    metadata.num_constraints
+                );
+            }
+        }
+        if halo2_strict_readiness_mode() && extracted.constraints.is_empty() {
+            let mut details = format!(
+                "Halo2 strict readiness mode requires non-empty constraint extraction for '{}'",
+                project_dir.display()
+            );
+            if let Some(hint) = self.zkevm_openzeppelin_dependency_hint(project_dir) {
+                details.push_str(". ");
+                details.push_str(&hint);
+            }
+            anyhow::bail!(details);
+        }
         Ok(())
     }
 
@@ -1626,6 +1649,30 @@ impl Halo2Target {
         } else {
             None
         }
+    }
+
+    fn zkevm_openzeppelin_dependency_hint(&self, project_dir: &Path) -> Option<String> {
+        let repo_root = project_dir.parent()?;
+        let required = project_dir.join(ZKEVM_OPENZEPPELIN_REQUIRED_REL);
+        if required.is_file() {
+            return None;
+        }
+        if !repo_root.join(".gitmodules").is_file() {
+            return None;
+        }
+        let marker = repo_root
+            .join("integration-tests")
+            .join("contracts")
+            .join("vendor")
+            .join("openzeppelin-contracts");
+        if !marker.exists() {
+            return None;
+        }
+        Some(format!(
+            "Missing dependency file '{}'. Run `git -C {} submodule update --init --recursive integration-tests/contracts/vendor/openzeppelin-contracts`",
+            required.display(),
+            repo_root.display()
+        ))
     }
 
     fn configured_run_bin(&self) -> Option<String> {

@@ -129,6 +129,18 @@ Operational rules:
 - Keep output path stable through `ZKF_SCAN_OUTPUT_ROOT` in `.env`.
 - Run scripts print step/monitor progress automatically on console.
 
+Built-in selector policy (automatic, no flags):
+- zkevm targets use a fixed deep template set (`cveX15/16/35/36/37/38/39/40/41`).
+- non-zkevm Halo2 uses `readiness_halo2`.
+- Circom uses `readiness_circom`.
+- Noir uses `readiness_noir`.
+- Cairo uses `readiness_cairo`.
+
+For zkevm targets, the runner enforces strict dependency readiness before fuzzing:
+- verifies `integration-tests/contracts/vendor/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol`,
+- auto-attempts `git submodule update --init --recursive integration-tests/contracts/vendor/openzeppelin-contracts`,
+- aborts if dependency is still missing (prevents deep runs with `0 constraints` introspection).
+
 Examples:
 
 ```bash

@@ -1053,6 +1053,18 @@ impl FuzzingEngine {
             Self::additional_bool(&self.config.campaign.parameters.additional, "evidence_mode")
                 .unwrap_or_default();
 
+        let exported_constraints = self.executor.num_constraints();
+        if exported_constraints == 0 {
+            tracing::warn!(
+                "Skipping spec inference attack: target exported 0 constraints; \
+                 fix backend introspection/readiness to enable actionable SpecInference depth"
+            );
+            if let Some(p) = progress {
+                p.inc();
+            }
+            return Ok(());
+        }
+
         // Depth contract: SpecInference must run full depth in Mode 2.
         // Do not accept YAML knobs that would cap work or reduce attempt depth.
         if evidence_mode
@@ -1167,50 +1179,145 @@ impl FuzzingEngine {
             let mut last_snapshot = std::time::Instant::now()
                 .checked_sub(std::time::Duration::from_secs(60))
                 .unwrap_or_else(std::time::Instant::now);
-            oracle
-                .run_with_progress_and_specs(
-                    self.executor.as_ref(),
-                    &initial_witnesses,
-                    |spec_idx, specs_total| {
-                        let now = std::time::Instant::now();
-                        let is_last = spec_idx.saturating_add(1) >= specs_total;
-                        let should_emit = spec_idx == 0
-                            || is_last
-                            || now.duration_since(last_snapshot)
-                                >= std::time::Duration::from_secs(15);
-                        if !should_emit {
-                            return;
-                        }
-                        last_snapshot = now;
+            let timeout_budget = self.wall_clock_remaining().map(|remaining| {
+                if remaining > Duration::from_secs(2) {
+                    remaining - Duration::from_secs(2)
+                } else {
+                    remaining
+                }
+            });
+            if let Some(timeout_budget) = timeout_budget {
+                match tokio::time::timeout(
+                    timeout_budget,
+                    oracle.run_with_progress_and_specs(
+                        self.executor.as_ref(),
+                        &initial_witnesses,
+                        |spec_idx, specs_total| {
+                            let now = std::time::Instant::now();
+                            let is_last = spec_idx.saturating_add(1) >= specs_total;
+                            let should_emit = spec_idx == 0
+                                || is_last
+                                || now.duration_since(last_snapshot)
+                                    >= std::time::Duration::from_secs(15);
+                            if !should_emit {
+                                return;
+                            }
+                            last_snapshot = now;
 
-                        let denom = specs_total.max(1) as f64;
-                        let phase_progress =
-                            ((spec_idx.saturating_add(1) as f64) / denom).clamp(0.0, 1.0);
-                        self.write_progress_snapshot(
-                            mode_label,
-                            "attack_progress",
-                            phases_total,
-                            phases_completed,
-                            Some(phase_progress),
-                            serde_json::json!({
-                                "attack_idx": attack_idx,
-                                "attacks_total": attacks_total,
-                                "attack_type": "SpecInference",
-                                "specs_total": specs_total,
-                                "specs_tested": spec_idx.saturating_add(1),
-                            }),
+                            let denom = specs_total.max(1) as f64;
+                            let phase_progress =
+                                ((spec_idx.saturating_add(1) as f64) / denom).clamp(0.0, 1.0);
+                            self.write_progress_snapshot(
+                                mode_label,
+                                "attack_progress",
+                                phases_total,
+                                phases_completed,
+                                Some(phase_progress),
+                                serde_json::json!({
+                                    "attack_idx": attack_idx,
+                                    "attacks_total": attacks_total,
+                                    "attack_type": "SpecInference",
+                                    "specs_total": specs_total,
+                                    "specs_tested": spec_idx.saturating_add(1),
+                                }),
+                            );
+                        },
+                    ),
+                )
+                .await
+                {
+                    Ok(result) => result,
+                    Err(_) => {
+                        tracing::warn!(
+                            "Spec inference timed out by wall-clock guard (budget {:?}); \
+                             continuing with next attack",
+                            timeout_budget
                         );
-                    },
-                )
-                .await
+                        if let Some(p) = progress {
+                            p.inc();
+                        }
+                        return Ok(());
+                    }
+                }
+            } else {
+                oracle
+                    .run_with_progress_and_specs(
+                        self.executor.as_ref(),
+                        &initial_witnesses,
+                        |spec_idx, specs_total| {
+                            let now = std::time::Instant::now();
+                            let is_last = spec_idx.saturating_add(1) >= specs_total;
+                            let should_emit = spec_idx == 0
+                                || is_last
+                                || now.duration_since(last_snapshot)
+                                    >= std::time::Duration::from_secs(15);
+                            if !should_emit {
+                                return;
+                            }
+                            last_snapshot = now;
+
+                            let denom = specs_total.max(1) as f64;
+                            let phase_progress =
+                                ((spec_idx.saturating_add(1) as f64) / denom).clamp(0.0, 1.0);
+                            self.write_progress_snapshot(
+                                mode_label,
+                                "attack_progress",
+                                phases_total,
+                                phases_completed,
+                                Some(phase_progress),
+                                serde_json::json!({
+                                    "attack_idx": attack_idx,
+                                    "attacks_total": attacks_total,
+                                    "attack_type": "SpecInference",
+                                    "specs_total": specs_total,
+                                    "specs_tested": spec_idx.saturating_add(1),
+                                }),
+                            );
+                        },
+                    )
+                    .await
+            }
         } else {
-            oracle
-                .run_with_progress_and_specs(
-                    self.executor.as_ref(),
-                    &initial_witnesses,
-                    |_spec_idx, _specs_total| {},
+            let timeout_budget = self.wall_clock_remaining().map(|remaining| {
+                if remaining > Duration::from_secs(2) {
+                    remaining - Duration::from_secs(2)
+                } else {
+                    remaining
+                }
+            });
+            if let Some(timeout_budget) = timeout_budget {
+                match tokio::time::timeout(
+                    timeout_budget,
+                    oracle.run_with_progress_and_specs(
+                        self.executor.as_ref(),
+                        &initial_witnesses,
+                        |_spec_idx, _specs_total| {},
+                    ),
                 )
                 .await
+                {
+                    Ok(result) => result,
+                    Err(_) => {
+                        tracing::warn!(
+                            "Spec inference timed out by wall-clock guard (budget {:?}); \
+                             continuing with next attack",
+                            timeout_budget
+                        );
+                        if let Some(p) = progress {
+                            p.inc();
+                        }
+                        return Ok(());
+                    }
+                }
+            } else {
+                oracle
+                    .run_with_progress_and_specs(
+                        self.executor.as_ref(),
+                        &initial_witnesses,
+                        |_spec_idx, _specs_total| {},
+                    )
+                    .await
+            }
         };
         let findings = run_result.findings;
 

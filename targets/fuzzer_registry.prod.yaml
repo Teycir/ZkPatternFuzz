@@ -52,6 +52,12 @@ collections:
       - cveX50_herodotus_mmr_range_check_gaps.yaml
       - cveX51_circomlib_montgomery_windowmulfix_underconstrained.yaml
       - cveX52_lurk_neptune_zero_padding_soundness.yaml
+  circom_readiness:
+    registry: local_cve_patterns
+    description: "Circom readiness profile (high selector-fit templates)"
+    templates:
+      - cveX20_polygon_missing_remainder_constraint.yaml
+      - cveX51_circomlib_montgomery_windowmulfix_underconstrained.yaml
   noir_readiness:
     registry: local_cve_patterns
     description: "Noir readiness profile (constraint/soundness focused)"
@@ -80,6 +86,7 @@ aliases:
   all: ["always"]
   always: ["always"]
   deep: ["always"]
+  readiness_circom: ["circom_readiness"]
   readiness_noir: ["noir_readiness"]
   readiness_cairo: ["cairo_readiness"]
   readiness_halo2: ["halo2_readiness"]
