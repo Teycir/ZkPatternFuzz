@@ -87,6 +87,15 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
+### 4a. [STANDARDIZED_RUN_PROFILES.md](STANDARDIZED_RUN_PROFILES.md) - **Fixed Wrappers**
+**For:** Stable day-to-day smoke/standard/deep runs without command drift  
+**Contains:**
+- `.env` bindings for 3 profile targets
+- mandatory wrapper scripts
+- stable execution pattern and override rules
+
+---
+
 ### 5. [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) - **Release Gate**
 **For:** RC and production releases  
 **Contains:**

@@ -83,15 +83,57 @@ cargo run --release -- --config campaigns/examples/defi_audit.yaml --verbose
 # Custom worker count
 cargo run --release -- --config campaigns/examples/defi_audit.yaml --workers 8
 
-# Minimal direct flow: JSON config + YAML patterns -> fuzz -> JSON findings
+# Minimal direct flow (manual CLI; wrappers below are recommended)
+ZKF_SCAN_OUTPUT_ROOT=artifacts/manual_run \
+ZKF_ZKPATTERNFUZZ_DETECTION_STAGE_TIMEOUT_SECS=1800 \
+ZKF_ZKPATTERNFUZZ_PROOF_STAGE_TIMEOUT_SECS=3600 \
+ZKF_ZKPATTERNFUZZ_STUCK_STEP_WARN_SECS=120 \
 cargo run --release --bin zkpatternfuzz -- \
-  --config-json targets/external/target_run_overrides/ext015_orion_svm_classifier_test.json \
+  --registry targets/fuzzer_registry.prod.yaml \
   --pattern-yaml campaigns/cve/patterns/cveX34_cairo_multiplier_assert_readiness_probe.yaml \
   --target-circuit /media/elements/Repos/zkml/orion/tests/ml/svm_classifier_test.cairo \
   --framework cairo \
   --main-component main \
-  --output-root artifacts/simple_flow \
-  --report-json artifacts/simple_flow/findings.json
+  --jobs 1 \
+  --workers 2 \
+  --iterations 500 \
+  --timeout 300 \
+  --emit-reason-tsv
+```
+
+### Standardized Daily Runs
+
+Use fixed wrappers instead of rebuilding long commands:
+
+```bash
+scripts/run_std_smoke.sh
+scripts/run_std_standard.sh
+scripts/run_std_deep.sh
+```
+
+Target bindings live in `.env`:
+- `ZKF_STD_TARGET_SMOKE`
+- `ZKF_STD_TARGET_STANDARD`
+- `ZKF_STD_TARGET_DEEP`
+
+Recommended profile mapping:
+- `smoke`: fast sanity pass
+- `standard`: routine day-to-day run
+- `deep`: long high-intensity run
+
+Operational rules:
+- Keep using the same wrapper for the same run class.
+- Change only the target binding variables in `.env` (or set `TARGET_NAME=...` per invocation).
+- Keep output path stable through `ZKF_SCAN_OUTPUT_ROOT` in `.env`.
+
+Examples:
+
+```bash
+# default bindings from .env
+scripts/run_std_standard.sh
+
+# one-off target override without editing .env
+TARGET_NAME=ext017_email_wallet_account_creation scripts/run_std_standard.sh
 ```
 
 ## AI-Assisted Workflow

@@ -84,3 +84,28 @@ Minimum content:
 - Default mode for this track is discovery + proof.
 - Only patch code when user explicitly asks to fix after proof.
 - If patching is requested, keep pre-fix replay artifact and add post-fix replay artifact.
+
+## 8) Standardized Run Profiles (Mandatory Default)
+To avoid ad-hoc command drift, agents must use the standardized wrappers for routine runs.
+
+### Binding Source Of Truth
+- `.env` keys:
+  - `ZKF_STD_TARGET_SMOKE`
+  - `ZKF_STD_TARGET_STANDARD`
+  - `ZKF_STD_TARGET_DEEP`
+- Keep these as the only routine target bindings for the 3 common profiles.
+
+### Mandatory Wrapper Entry Points
+- `scripts/run_std_smoke.sh`
+- `scripts/run_std_standard.sh`
+- `scripts/run_std_deep.sh`
+
+### Agent Rule
+- For "smoke", "standard", or "deep" requests, do **not** rebuild CLI command-lines manually.
+- Run the matching wrapper script directly.
+- Only override `TARGET_NAME` when explicitly requested by the operator.
+- Keep output method/path stable via env (`ZKF_SCAN_OUTPUT_ROOT`) unless operator explicitly asks to change it.
+
+### Escalation Rule
+- If a run fails due to sandbox/write constraints, retry with required execution permissions.
+- Do not change output schema, folder layout, or telemetry file names as a workaround.
