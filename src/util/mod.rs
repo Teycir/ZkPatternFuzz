@@ -5,6 +5,21 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Build a deterministic per-trial benchmark output root to avoid cross-trial collisions.
+pub fn benchmark_scan_output_root(
+    output_dir: &Path,
+    suite_name: &str,
+    target_name: &str,
+    trial_idx: usize,
+    seed: u64,
+) -> PathBuf {
+    output_dir
+        .join("scan_outputs")
+        .join(suite_name)
+        .join(target_name)
+        .join(format!("trial_{}_seed_{}", trial_idx, seed))
+}
+
 /// Write file contents atomically by writing to a temp sibling file and renaming.
 ///
 /// This ensures readers either observe the old full file or the new full file,

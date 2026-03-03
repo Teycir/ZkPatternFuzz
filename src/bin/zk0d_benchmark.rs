@@ -502,6 +502,19 @@ fn run_trial(
             run_signal_dir.display()
         )
     })?;
+    let scan_output_root = zk_fuzzer::util::benchmark_scan_output_root(
+        Path::new(&args.output_dir),
+        &item.suite_name,
+        &item.target.name,
+        item.trial_idx,
+        item.seed,
+    );
+    fs::create_dir_all(&scan_output_root).with_context(|| {
+        format!(
+            "Failed to create benchmark scan output root '{}'",
+            scan_output_root.display()
+        )
+    })?;
     cmd.env("HOME", &benchmark_home)
         .env("ZKF_RUN_SIGNAL_DIR", &run_signal_dir)
         .env("ZKF_DISABLE_EVIDENCE_BUNDLES", "1");
@@ -533,6 +546,8 @@ fn run_trial(
         .arg(&item.target.main_component)
         .arg("--framework")
         .arg(&item.target.framework)
+        .arg("--output-root")
+        .arg(&scan_output_root)
         .arg("--jobs")
         .arg(args.batch_jobs.to_string())
         .arg("--workers")

@@ -73,8 +73,10 @@ Current status: ✅ console + run-log proof totals now use `proven_exploitable` 
 - [x] Add stuck-step warning when progress does not change for a fixed window.
 - [x] Keep memory guard on by default for proof stage and fail fast on unsafe settings.
 - [x] Reduce repeated backend probe loops when offline dependencies are missing.
+- [x] Enforce deterministic fail-fast resource preflight for engine runs (no runtime low-memory skip/fallback behavior).
 
-Current status: ✅ `zkpatternfuzz` now enforces per-template hard timeouts for detection (`attack_*`) and proof/reporting (`reporting`/proof-like progress stages), kills timed-out process trees, writes synthetic `run_outcome.json` with `reason_code=wall_clock_timeout` + `proof_status=proof_failed`, emits `[TEMPLATE WARNING] ... warning=stuck_step ...` when progress is unchanged for the fixed window (`ZKF_ZKPATTERNFUZZ_STUCK_STEP_WARN_SECS`), fails fast on unsafe proof-stage memory guard settings (`ZKF_ZKPATTERNFUZZ_MEMORY_GUARD_ENABLED=false` or `ZKF_ZKPATTERNFUZZ_MEMORY_RESERVED_MB=0`), and stops Halo2 toolchain cascades after dependency-resolution failures to avoid repeated offline probe loops (`crates/zk-backends/src/halo2/mod.rs`, `crates/zk-backends/tests/test_halo2_toolchain_cascade.rs`, 2026-02-26).
+Current status: ✅ `zkpatternfuzz` enforces per-template hard timeouts for detection (`attack_*`) and proof/reporting (`reporting`/proof-like progress stages), kills timed-out process trees, writes synthetic `run_outcome.json` with `reason_code=wall_clock_timeout` + `proof_status=proof_failed`, emits `[TEMPLATE WARNING] ... warning=stuck_step ...` when progress is unchanged for the fixed window (`ZKF_ZKPATTERNFUZZ_STUCK_STEP_WARN_SECS`), fails fast on unsafe proof-stage memory guard settings (`ZKF_ZKPATTERNFUZZ_MEMORY_GUARD_ENABLED=false` or `ZKF_ZKPATTERNFUZZ_MEMORY_RESERVED_MB=0`), and stops Halo2 toolchain cascades after dependency-resolution failures (`crates/zk-backends/src/halo2/mod.rs`, `crates/zk-backends/tests/test_halo2_toolchain_cascade.rs`, 2026-02-26).  
+Update (2026-03-03): engine resource hardening now uses deterministic fail-fast preflight (unsafe RAM headroom or projected commit aborts before run start, no runtime low-memory skip path), applies isolated child `RLIMIT_AS/RLIMIT_CPU`, enforces global attack-unit hard caps, and bounds backend subprocess pipe capture memory (`src/fuzzer/engine/engine_init.rs`, `src/fuzzer/engine/run_dispatch.rs`, `src/fuzzer/engine/run_continuation.rs`, `src/fuzzer/engine/continuous_fuzzer.rs`, `src/executor/isolated.rs`, `crates/zk-backends/src/util.rs`, `src/fuzzer/engine/attack_runner_budget.rs`).
 
 ### Proof artifact contract (mandatory)
 - [x] Require `replay_command.txt` for every proved outcome.
@@ -397,17 +399,21 @@ Current status: ✅ enforced by `has_required_proof_artifacts()` + proof-status 
 - [x] Zero unresolved backend-specific release blockers (`scripts/release_candidate_gate.sh` -> `backend_release_blockers.json`).
 - [x] Release candidate gate enforces and archives 5/5 evidence bundles (including 14-day consecutive scorecard thresholds) (`scripts/release_candidate_gate.sh` -> evidence bundle manifest/archive).
 
-### 8.6 Active Closure Tasks (2026-02-23)
+### 8.6 Active Closure Tasks (2026-03-03)
 - [x] Raise Noir maturity score from `4.5` to `5.0` and begin a non-zero 14-day streak (now `5.0/5.0`, streak `1/14`; scorecard normalization counts skipped integration checks as non-executed instead of failed in `scripts/backend_maturity_scorecard.sh`).
 - [x] Raise Halo2 maturity score from `4.5` to `5.0` and begin a non-zero 14-day streak (now `5.0/5.0`, streak `1/14`; scorecard normalization counts skipped integration checks as non-executed instead of failed in `scripts/backend_maturity_scorecard.sh`).
 - [x] Raise Cairo maturity score from `4.95` to `5.0` and begin a non-zero 14-day streak (now `5.0/5.0`, streak `1/14`; scorecard applies a bounded selector-mismatch grace rate so benign low mismatch does not cap constraint-coverage fidelity in `scripts/backend_maturity_scorecard.sh`).
-- [ ] Continue Circom strict lane daily to move streak from `2/14` to `14/14` (`12` days remaining as of `2026-02-23`; projected earliest completion `2026-03-07` if consecutive passes continue; run `scripts/run_release_streak_status.sh` each day to refresh both maturity + flake projections).
+- [ ] Continue strict daily lane to move backend maturity streaks and Circom flake streak to `14/14` (`scripts/run_release_streak_status.sh` refreshed on `2026-03-03`: maturity streaks `circom=1/14`, `noir=1/14`, `cairo=1/14`, `halo2=2/14`; Circom flake streak `1/14`; projected completion days: `halo2=2026-03-15`, others `2026-03-16`).
 
 ### 8.7 Logic Error Triage (2026-02-23)
 - [x] Harden UTC date-boundary determinism in Circom flake streak tests so the two-day streak assertion cannot flake around midnight (`tests/test_circom_flake_gate.py`).
 - [x] Harden isolated worker response-file cleanup: ignore expected `NotFound` during cleanup and keep warning logs for unexpected remove failures (`src/executor/isolated.rs`).
 - [x] Replace isolated executor 5ms poll sleep loop with timeout-capable process wait semantics to avoid busy-wait CPU burn under long-running workers (`src/executor/isolated.rs`).
 - [x] Add corrupted-history recovery for Circom flake gate history loads (fallback to empty history + explicit warning instead of raw JSON parse crash) (`scripts/circom_flake_gate.sh`).
+- [x] Apply Unix child process hard limits in isolated execution (`RLIMIT_AS` + `RLIMIT_CPU`) so runaway workers are kernel-bounded (`src/executor/isolated.rs`).
+- [x] Bound backend subprocess stdout/stderr capture to prevent parent-process RAM blowup under verbose tool failures (`crates/zk-backends/src/util.rs`).
+- [x] Add global attack-unit hard cap guardrail (`attack_units_hard_cap` / `ZK_FUZZER_ATTACK_UNITS_HARD_CAP`) to prevent pathological sample inflation (`src/fuzzer/engine/attack_runner_budget.rs`).
+- [x] Enforce fail-fast resource preflight in `FuzzingEngine::new` so unsafe RAM conditions abort before execution instead of introducing runtime skip/fallback branches (`src/fuzzer/engine/engine_init.rs`).
 - Triage note: lock-free approximate counters are currently intentional/documented (`src/corpus/lockfree.rs`) and contention tests validate first-wins bitmap accounting (`tests/concurrency_stress_tests.rs`), so those claims are not currently tracked as blockers.
 
 ### 8.8 Core Logic Error Intake (2026-02-23)
