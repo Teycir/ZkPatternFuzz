@@ -317,8 +317,11 @@ selector_policy:
 fn scan_selector_ignores_selector_metadata_header_lines() {
     let temp_dir = tempfile::tempdir().expect("tempdir");
     let target_path = temp_dir.path().join("mod_target.circom");
-    fs::write(&target_path, "pragma circom 2.0.0;\ncomponent main = IsZero();\n")
-        .expect("write target");
+    fs::write(
+        &target_path,
+        "pragma circom 2.0.0;\ncomponent main = IsZero();\n",
+    )
+    .expect("write target");
 
     let pattern_yaml = r#"
 patterns:

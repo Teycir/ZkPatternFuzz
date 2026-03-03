@@ -221,7 +221,7 @@ vulnerabilities:
         result.is_err(),
         "expected unresolved env placeholder rejection"
     );
-    let error = result.err().expect("strict load should fail").to_string();
+    let error = result.expect_err("strict load should fail").to_string();
     assert!(
         error.contains("unresolved env placeholder"),
         "expected unresolved placeholder message, got: {}",

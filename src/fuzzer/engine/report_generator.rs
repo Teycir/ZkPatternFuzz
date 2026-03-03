@@ -239,8 +239,7 @@ impl FuzzingEngine {
         );
         report.duration_seconds = duration;
         let core_stats = self.core.stats();
-        report.statistics.total_executions =
-            self.core.execution_count().max(core_stats.executions);
+        report.statistics.total_executions = self.core.execution_count().max(core_stats.executions);
         report.statistics.unique_crashes = report.statistics.unique_crashes.max(core_stats.crashes);
         report.statistics.coverage_percentage = report
             .statistics
@@ -256,7 +255,8 @@ impl FuzzingEngine {
             .collect();
         report.statistics.oracle_types_fired = fired_oracle_types.len() as u64;
         report.statistics.oracle_types_registered = self.core.oracle_count() as u64;
-        report.statistics.oracle_diversity_score = if report.statistics.oracle_types_registered == 0 {
+        report.statistics.oracle_diversity_score = if report.statistics.oracle_types_registered == 0
+        {
             0.0
         } else {
             report.statistics.oracle_types_fired as f64

@@ -252,7 +252,7 @@ reporting:
         result.is_err(),
         "single-backend differential without reference backend should hard-fail"
     );
-    let err = result.err().expect("error").to_string();
+    let err = result.expect_err("error").to_string();
     assert!(
         err.contains("reference_backend"),
         "expected missing reference_backend error, got: {}",

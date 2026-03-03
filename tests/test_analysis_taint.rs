@@ -85,9 +85,7 @@ fn test_selector_label_inference_identifies_halo2_style_selectors() {
     analyzer.propagate_constraint(1, &[0, 7], 10);
     analyzer.mark_as_output(10);
     let findings = analyzer.analyze();
-    assert!(
-        findings
-            .iter()
-            .any(|f| f.finding_type == TaintFindingType::ImplicitFlow)
-    );
+    assert!(findings
+        .iter()
+        .any(|f| f.finding_type == TaintFindingType::ImplicitFlow));
 }

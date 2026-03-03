@@ -898,8 +898,10 @@ impl SpecInferenceOracle {
                         inputs: violation.clone(),
                         outputs: result.outputs.clone(),
                     };
-                    let spec_violated =
-                        matches!(self.spec_holds(spec, &execution_sample, num_inputs), Some(false));
+                    let spec_violated = matches!(
+                        self.spec_holds(spec, &execution_sample, num_inputs),
+                        Some(false)
+                    );
                     if !spec_violated {
                         continue;
                     }

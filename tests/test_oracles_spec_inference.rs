@@ -128,9 +128,7 @@ fn test_constant_output_violation_generates_input_mutation() {
     let violations = oracle.generate_violations(&spec, &base, &mut rng);
 
     assert!(!violations.is_empty());
-    assert!(
-        violations
-            .iter()
-            .all(|candidate| candidate.len() == base.len() && candidate != &base)
-    );
+    assert!(violations
+        .iter()
+        .all(|candidate| candidate.len() == base.len() && candidate != &base));
 }

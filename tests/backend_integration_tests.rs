@@ -1753,7 +1753,7 @@ fn test_halo2_ext005_ezkl_replay_base_execution_failure() {
 
     println!("test_halo2_ext005_ezkl_replay_base_execution_failure: phase=target_setup");
     let target_setup_started = Instant::now();
-    if let None = expect_or_skip_infra(
+    if expect_or_skip_infra(
         "test_halo2_ext005_ezkl_replay_base_execution_failure",
         "setup Halo2 target",
         with_console_progress(
@@ -1761,7 +1761,9 @@ fn test_halo2_ext005_ezkl_replay_base_execution_failure() {
             Duration::from_secs(20),
             || target.setup(),
         ),
-    ) {
+    )
+    .is_none()
+    {
         return;
     }
     let target_setup_elapsed = target_setup_started.elapsed();

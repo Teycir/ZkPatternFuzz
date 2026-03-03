@@ -1010,9 +1010,9 @@ impl ConstraintInferenceEngine {
         if !fixed_values.is_empty() {
             for value in &fixed_values {
                 let mut all = seed.clone();
-                for idx in 0..all.len() {
+                for (idx, slot) in all.iter_mut().enumerate() {
                     if !fixed_input_indices.contains(&idx) {
-                        all[idx] = value.clone();
+                        *slot = value.clone();
                     }
                 }
                 candidates.push(all);
