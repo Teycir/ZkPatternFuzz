@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 use std::sync::{Mutex, OnceLock};
 use zk_core::constants::bn254_modulus_bytes;
 use zk_core::ConstraintEquation;
@@ -314,9 +314,55 @@ impl NoirTarget {
         Ok(output)
     }
 
+    fn run_nargo_command_with_fallback_capture<F>(
+        &self,
+        context: &str,
+        mut configure: F,
+    ) -> Result<(Output, String)>
+    where
+        F: FnMut(&mut Command),
+    {
+        fs::create_dir_all(&self.build_dir)?;
+        let nargo_home = self.nargo_home_dir();
+        fs::create_dir_all(&nargo_home)?;
+        let cargo_home = nargo_home.join("cargo");
+        fs::create_dir_all(&cargo_home)?;
+        let project_dir = self.active_project_path().to_path_buf();
+        let build_dir = self.build_dir.clone();
+        let candidates = self.nargo_command_candidates();
+        let mut failures = Vec::new();
+        let mut labels_seen = Vec::new();
+
+        for candidate in candidates {
+            labels_seen.push(candidate.clone());
+            let mut cmd = Command::new(&candidate);
+            cmd.current_dir(&project_dir)
+                .env("HOME", &nargo_home)
+                .env("NARGO_HOME", &nargo_home)
+                .env("CARGO_HOME", &cargo_home)
+                .env("NARGO_TARGET_DIR", &build_dir)
+                .env("CARGO_TARGET_DIR", &build_dir);
+            configure(&mut cmd);
+
+            match crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout()) {
+                Ok(output) => {
+                    self.remember_selected_nargo_binary(&candidate);
+                    return Ok((output, candidate));
+                }
+                Err(err) => failures.push(format!("{candidate}: {err}")),
+            }
+        }
+
+        anyhow::bail!(
+            "{context}. Candidates tried: {}. Last errors: {}",
+            labels_seen.join(", "),
+            failures.join(" || ")
+        )
+    }
+
     fn ensure_nargo_subcommand(&self, subcommand: &str) -> Result<()> {
-        let output = self
-            .run_nargo_command_with_fallback(
+        let (output, _candidate) = self
+            .run_nargo_command_with_fallback_capture(
                 &format!("Failed probing nargo subcommand '{subcommand}'"),
                 |cmd| {
                     cmd.args(["help", subcommand]);
@@ -966,8 +1012,8 @@ impl NoirTarget {
         let _prover_guard = ScopedFileOverwrite::overwrite(prover_path, prover_toml.as_bytes())?;
 
         // Execute using nargo execute (JSON output is version-dependent)
-        let output = self
-            .run_nargo_command_with_fallback("Failed to execute Noir circuit", |cmd| {
+        let (output, _candidate) = self
+            .run_nargo_command_with_fallback_capture("Failed to execute Noir circuit", |cmd| {
                 cmd.args(["execute", "--json"]);
             })
             .context("Failed to execute Noir circuit")?;

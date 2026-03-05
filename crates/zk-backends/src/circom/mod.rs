@@ -1286,9 +1286,24 @@ impl CircomTarget {
 
     /// Check if snarkjs is available
     pub fn check_snarkjs_available() -> Result<String> {
-        let (output, _candidate) = run_snarkjs_with_fallback(None, "snarkjs not found", |cmd| {
-            cmd.arg("--version");
-        })?;
+        let (output, candidate) =
+            run_snarkjs_with_fallback_capture(None, "snarkjs not found", |cmd| {
+                cmd.arg("--version");
+            })?;
+
+        if !output.status.success() {
+            let version_line = crate::util::command_version_line(&output);
+            let looks_like_npx_banner = candidate == "npx snarkjs"
+                && version_line
+                    .as_deref()
+                    .is_some_and(|line| line.trim_start().starts_with("snarkjs@"));
+            if !looks_like_npx_banner {
+                anyhow::bail!(
+                    "snarkjs --version failed: {}",
+                    crate::util::command_failure_summary(&output)
+                );
+            }
+        }
 
         crate::util::command_version_line(&output).ok_or_else(|| {
             anyhow::anyhow!(

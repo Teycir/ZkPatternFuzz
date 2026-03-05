@@ -1902,7 +1902,9 @@ impl Halo2Target {
         &self,
         witness: &[FieldElement],
     ) -> Result<Halo2CanonicalProofEnvelope> {
-        let public_inputs = self.canonical_public_projection(witness);
+        let public_inputs = self
+            .execute(witness)
+            .context("Failed deriving Halo2 canonical public inputs during prove")?;
         let seed = self.key_setup_seed()?;
 
         Ok(Halo2CanonicalProofEnvelope {
