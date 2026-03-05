@@ -4,14 +4,12 @@ Operational guide for diagnosing Noir readiness and full-capacity execution issu
 
 ## 1. Fast Health Check
 
-Run these in order:
-
 ```bash
 nargo --version
 ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_integration -- --exact
 ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_local_prove_verify_smoke -- --exact
 ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_constraint_coverage -- --exact
-target/release/zkpatternfuzz --alias readiness_noir --framework noir --workers 2 --iterations 100 --timeout 20
+scripts/run_noir_readiness.sh --workers 2 --iterations 250 --timeout 30
 ```
 
 Then inspect:
@@ -24,28 +22,32 @@ cat artifacts/backend_readiness/noir/latest_report.json
 
 | Signal | Likely cause | Fix |
 |---|---|---|
-| `backend_preflight_failed` | Missing/invalid Noir toolchain, bad `Nargo.toml` path | Verify `nargo --version`, ensure `target_circuit` points to a real `Nargo.toml` |
-| High `selector_mismatch` | Template attack does not match target circuit selectors | Not a runtime crash; tune alias/templates for Noir target shape |
-| `run_outcome_missing` | Early process abort or artifact write interruption | Re-run with `--emit-reason-tsv`, inspect matrix log |
-| `runtime_error` | Executor path failure, often dependency/layout mismatch | Check lane logs and reproduce with a single target run |
-| Integration test fails but matrix runs | Real-backend env/test setup mismatch | Re-run with `ZKFUZZ_REAL_BACKENDS=1` and inspect per-test log from lane output |
-| `proof generation failed: missing Barretenberg 'bb' tool` | Project/toolchain expects external `bb` binary but it is unavailable | Install matching Barretenberg and ensure `bb` is on `PATH` |
+| `backend_preflight_failed` | Missing or incompatible Noir toolchain | Verify `nargo --version` and project layout |
+| `selector_mismatch` | Template does not fit target semantics | Choose a better alias or explicit pattern |
+| `run_outcome_missing` | Early abort or interrupted artifact write | Rerun with `--emit-reason-tsv` and inspect logs |
+| `runtime_error` | Executor path failure | Reproduce on one target and inspect stderr |
+| missing `bb` | External Barretenberg binary not installed | Install matching `bb` and ensure it is on `PATH` |
 
-## 3. Target Path Rules (Noir)
+## 3. Target Path Rule
 
-For Noir, `target_circuit` should be the project `Nargo.toml`, not the `.nr` source file:
+For Noir, `target_circuit` should be the project `Nargo.toml`, not the `.nr` source file.
 
-```yaml
-targets:
-  - name: my_noir_target
-    target_circuit: /path/to/project/Nargo.toml
-    main_component: main
-    framework: noir
-    alias: readiness_noir
-    enabled: true
+## 4. Direct Single-Target Repro
+
+Export writable batch paths first:
+
+```bash
+export ZKF_SCAN_OUTPUT_ROOT="$PWD/artifacts/noir_manual"
+export ZKF_RUN_SIGNAL_DIR="$PWD/artifacts/noir_manual/run_signals"
+export ZKF_BUILD_CACHE_DIR="$PWD/artifacts/noir_manual/build_cache"
+export ZKF_SHARED_BUILD_CACHE_DIR="$PWD/artifacts/noir_manual/build_cache"
+export ZKF_ZKPATTERNFUZZ_DETECTION_STAGE_TIMEOUT_SECS=1800
+export ZKF_ZKPATTERNFUZZ_PROOF_STAGE_TIMEOUT_SECS=3600
+export ZKF_ZKPATTERNFUZZ_STUCK_STEP_WARN_SECS=120
+mkdir -p "$ZKF_SCAN_OUTPUT_ROOT" "$ZKF_RUN_SIGNAL_DIR" "$ZKF_BUILD_CACHE_DIR"
 ```
 
-## 4. Reproduce A Single Failing Target
+Then run:
 
 ```bash
 target/release/zkpatternfuzz \
@@ -58,29 +60,25 @@ target/release/zkpatternfuzz \
   --workers 2 \
   --iterations 100 \
   --timeout 20 \
+  --dry-run \
   --emit-reason-tsv
 ```
 
 ## 5. Readiness And Release Gate View
 
 - Noir lane report: `artifacts/backend_readiness/noir/latest_report.json`
-- Aggregated report: `artifacts/backend_readiness/latest_report.json`
+- Aggregate dashboard: `artifacts/backend_readiness/latest_report.json`
 
-Run all backend lanes plus aggregate dashboard:
+Refresh the aggregate dashboard with:
 
 ```bash
 scripts/backend_readiness_dashboard.sh
 ```
 
-Default gate intent is non-Circom readiness with:
-- minimum completion ratio per backend (`>= 0.90`)
-- `runtime_error` at `0`
-- `backend_preflight_failed` at `0`
-
-## 6. Practical Checklist Before Marking Noir Ready
+## 6. Practical Checklist
 
 1. `test_noir_integration` passes.
-2. `test_noir_constraint_coverage` passes.
-3. Noir lane report has no `backend_preflight_failed`.
-4. `run_outcome_missing` is eliminated or explicitly classified.
-5. Aggregated backend dashboard keeps Noir in passing state.
+2. `test_noir_local_prove_verify_smoke` passes.
+3. `test_noir_constraint_coverage` passes.
+4. Noir readiness report has no unexpected `backend_preflight_failed`.
+5. Any remaining `run_outcome_missing` cases are explicitly classified or reproduced.

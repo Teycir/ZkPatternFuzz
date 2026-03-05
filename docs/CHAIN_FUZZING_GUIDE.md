@@ -310,10 +310,10 @@ reports/
 
 ## Related Documentation
 
-- [Mode 3 Implementation Plan](./PLAN_MODE3_MULTISTEP.md)
+- [TUTORIAL.md](./TUTORIAL.md)
 - [Scan Modes Overview](./scan_modes.md)
 - [Depth Metrics](./scan_metrics.md)
-- [Resume Guide](./RESUME_GUIDE.md)
+- [TARGETS.md](./TARGETS.md)
 - [Profile Guide](./PROFILES_GUIDE.md)
 
 ---

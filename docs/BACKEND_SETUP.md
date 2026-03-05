@@ -1,236 +1,105 @@
 # Backend Setup Guide
 
-## Current Status
+This document reflects the current repository workflow: ZkPatternFuzz assumes the backend tools already exist on the host, then verifies and internalizes the parts it needs. It no longer relies on repo-local installer scripts such as `install_cairo.sh` or `install_halo2.sh`.
 
-✅ **Circom** - 2.2.3 (Production)  
-✅ **Noir** - 1.0.0-beta.18 (Production)  
-✅ **Halo2** - Test circuits built (~/halo2-circuits/)  
-✅ **Cairo** - 2.15.0 via Scarb 2.15.1 (Production)  
+## Verified On This Host (2026-03-05)
 
-## Quick Local Bootstrap (Circom + snarkjs + ptau)
+| Tool | Verified version |
+|---|---|
+| `circom` | `2.2.3` |
+| `snarkjs` | `0.7.6` |
+| `nargo` | `1.0.0-beta.18` |
+| `scarb` | `2.15.1` |
+| `cairo-compile` | `0.14.0.1` |
+| `cairo-run` | `0.14.0.1` |
+| `z3` | `4.13.0` |
 
-Use the built-in bootstrap command to internalize Circom tooling under `./bins`:
+For the full host inventory, see [TOOLS_AVAILABLE_ON_HOST.md](TOOLS_AVAILABLE_ON_HOST.md).
 
-```bash
-cargo run --release --bin zk-fuzzer -- bins bootstrap
-```
-
-Notes:
-- Circom is sourced from an already-installed local binary in `PATH`.
-- snarkjs is sourced from an already-installed local binary in `PATH`.
-- ptau is copied from the local fixture with checksum verification.
-
----
-
-## 1. Cairo Backend (STARK) ✅
-
-### Status: COMPLETE
-
-Cairo 2.15.0 installed via Scarb 2.15.1
-
-### Installation
+## 1. Build The Project
 
 ```bash
-# Install Scarb (includes Cairo 2.x)
-curl --proto '=https' --tlsv1.2 -sSf https://docs.swmansion.com/scarb/install.sh | sh
-
-# Verify
-scarb --version  # Should show 2.15.1
-scarb cairo-run --version  # Should show Cairo 2.15.0
+cargo build --release --bins
 ```
 
-### Test Cairo Backend
+## 2. Internalize Local Circom Assets
+
+ZkPatternFuzz can stage the locally installed Circom tooling into `./bins`:
 
 ```bash
-cd /home/teycir/Repos/ZkPatternFuzz
-cargo test --package zk-backends --lib cairo -- --nocapture
+target/release/zk-fuzzer bins bootstrap
 ```
 
----
+This command:
 
-## 2. Setup Halo2 Test Circuits ✅
+- copies or links `circom` from `PATH`,
+- copies or links `snarkjs` from `PATH`,
+- stages `pot12_final.ptau` from the repository test fixture.
 
-### Status: COMPLETE
-
-Halo2 test circuits successfully built in `~/halo2-circuits/`
-
-### Installation (Automated)
+Use `--dry-run` to validate without changing `bins/`:
 
 ```bash
-bash scripts/install_halo2.sh
+target/release/zk-fuzzer bins bootstrap --dry-run
 ```
 
-### Manual Installation
+## 3. Verify Core Backend Tools
 
 ```bash
-# Clone repositories to mounted storage
-cd /media/elements/Repos/zk0d/cat3_privacy/
-git clone https://github.com/privacy-scaling-explorations/halo2.git
-git clone https://github.com/axiom-crypto/halo2-lib.git
-
-# Create test circuits in HOME directory (avoids permission issues)
-mkdir -p ~/halo2-circuits
-cd ~/halo2-circuits
-
-# Initialize Cargo project
-cargo init --name halo2-test-circuits
-
-# Add dependencies
-cat >> Cargo.toml << 'EOF'
-
-[[bin]]
-name = "simple_circuit"
-path = "src/simple.rs"
-
-[[bin]]
-name = "range_check"
-path = "src/range.rs"
-
-[dependencies]
-halo2_proofs = { git = "https://github.com/privacy-scaling-explorations/halo2.git", tag = "v2023_04_20" }
-halo2curves = { version = "0.3.2", git = "https://github.com/privacy-scaling-explorations/halo2curves", tag = "0.3.2" }
-ff = "0.13"
-group = "0.13"
-rand = "0.8"
-EOF
-
-# Create simple circuit
-cat > src/simple.rs << 'EOF'
-fn main() {
-    println!("Halo2 Simple Circuit Test");
-}
-EOF
-
-# Create range check circuit
-cat > src/range.rs << 'EOF'
-fn main() {
-    println!("Halo2 Range Check Circuit Test");
-}
-EOF
-
-# Build (IMPORTANT: clean target if copying from mounted filesystem)
-rm -rf target  # Remove any copied build artifacts with permission issues
-cargo build --release
+circom --version
+snarkjs --version
+nargo --version
+scarb --version
+cairo-compile --version
+cairo-run --version
+z3 --version
 ```
 
-### Verify Installation
+## 4. Run Backend Integration Tests
+
+Noir:
 
 ```bash
-cd ~/halo2-circuits
-./target/release/simple_circuit
-./target/release/range_check
+ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_integration -- --exact
+ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_local_prove_verify_smoke -- --exact
+ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_constraint_coverage -- --exact
 ```
 
-### Test Halo2 Backend
+Cairo:
 
 ```bash
-cd /home/teycir/Repos/ZkPatternFuzz
-cargo test --package zk-backends --lib halo2 -- --nocapture
+ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_cairo_integration -- --exact
+ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_cairo_stone_prover_prove_verify_smoke -- --exact
+ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_cairo1_scarb_prove_verify_smoke -- --exact
 ```
 
----
-
-## 3. Verify All Backends
-
-### Quick Test Script
+Halo2:
 
 ```bash
-#!/bin/bash
-echo "=== Backend Verification ==="
-
-# Circom
-echo -n "Circom: "
-circom --version 2>&1 | grep -q "2\." && echo "✅ OK" || echo "❌ FAIL"
-
-# Noir
-echo -n "Noir: "
-nargo --version 2>&1 | grep -q "1\." && echo "✅ OK" || echo "❌ FAIL"
-
-# Cairo
-echo -n "Cairo: "
-if command -v scarb &> /dev/null; then
-    scarb --version 2>&1 | grep -q "2\." && echo "✅ OK (Scarb)" || echo "⚠️ OLD"
-else
-    cairo-compile --version 2>&1 | grep -q "2\." && echo "✅ OK" || echo "⚠️ OLD (0.14)"
-fi
-
-# Halo2 (check if circuits exist)
-echo -n "Halo2: "
-if [ -d "/media/elements/Repos/zk0d/cat3_privacy/halo2" ]; then
-    echo "✅ OK (circuits available)"
-else
-    echo "⚠️ No test circuits"
-fi
-
-echo ""
-echo "=== ZkPatternFuzz Backend Tests ==="
-cd /home/teycir/Repos/ZkPatternFuzz
-cargo test --package zk-backends --lib -- --test-threads=1 --nocapture 2>&1 | grep -E "test.*ok|FAILED"
+export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-nightly}"
+ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_halo2_json_integration -- --exact
+ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_halo2_real_circuit_constraint_coverage -- --exact
+ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_halo2_scaffold_execution_stability -- --exact
 ```
 
-Save as `verify_backends.sh` and run:
+## 5. Use The Readiness Wrappers
+
+The current operational entrypoints for backend readiness are:
 
 ```bash
-chmod +x verify_backends.sh
-./verify_backends.sh
+scripts/run_noir_readiness.sh --help
+scripts/run_cairo_readiness.sh --help
+scripts/run_halo2_readiness.sh --help
+scripts/backend_readiness_dashboard.sh --help
 ```
 
----
+These wrappers execute integration tests plus the appropriate matrix runs and write artifacts under `artifacts/backend_readiness/`.
 
-## 4. Update ZkPatternFuzz Config
+## 6. What This Repo Does Not Do
 
-Once backends are ready, update `Cargo.toml` to enable all features:
+This repo does not currently ship working one-shot installer scripts for:
 
-```toml
-[dependencies]
-# Add Halo2 dependencies
-halo2_proofs = { version = "0.3", optional = true }
-halo2curves = { version = "0.6", optional = true }
+- Cairo
+- Halo2
+- external prover toolchains
 
-[features]
-default = ["circom", "noir"]
-circom = []
-noir = []
-cairo = []
-halo2 = ["dep:halo2_proofs", "dep:halo2curves"]
-all-backends = ["circom", "noir", "cairo", "halo2"]
-```
-
-Build with all backends:
-
-```bash
-cargo build --release --features all-backends
-```
-
----
-
-## 5. Next Steps
-
-### All Backends Ready! ✅
-
-- **Circom** 2.2.3 ✅
-- **Noir** 1.0.0-beta.18 ✅  
-- **Cairo** 2.15.0 ✅
-- **Halo2** Test circuits ✅
-
-### Ready for Mode 2 Differential Testing
-
-You can now run differential testing across backends. Example targets:
-
-1. **Iden3 Circuits** (Circom) - Port to Noir for Mode 2
-2. **Tornado Cash** (Circom) - Already tested in Mode 1
-3. **Custom Circuits** - Implement in multiple backends
-
-### Recommended Next Action
-
-**Option A: Test Iden3 (Mode 1 + Mode 3)**
-```bash
-cd /home/teycir/Repos/ZkPatternFuzz
-cargo run --release -- --config campaigns/zk0d_validation/iden3/auth_deep.yaml
-```
-
-**Option B: Create Differential Test (Mode 2)**
-Port a simple circuit to both Circom and Noir, then run differential testing.
-
-**Option C: Multi-Circuit Chain (Mode 3)**
-Test Iden3's auth → state transition → credential query flow.
+If a backend binary is missing, install it from its upstream project, then come back and verify it with the commands above.

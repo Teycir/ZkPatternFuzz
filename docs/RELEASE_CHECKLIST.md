@@ -2,74 +2,96 @@
 
 Production release checklist for ZkPatternFuzz (`rc` and final tags).
 
-Scope update (2026-02-22): this checklist keeps release-blocking gates only. Exploratory and duplicate validation lanes are tracked outside this file.
-
 ## 1. Release Metadata
 
-- [ ] Version chosen and documented (`vX.Y.Z`).
-- [ ] Release branch/tag candidate identified.
-- [ ] Scope frozen (features, bugfixes, known limitations).
+- [ ] Version chosen and documented.
+- [ ] Release branch or tag candidate identified.
+- [ ] Scope frozen.
 - [ ] Go/no-go owner assigned.
 
-## 2. Contract Compatibility
+## 2. Environment Prerequisites
 
-- [ ] Output/report contract decision recorded: unchanged, or explicitly approved change with migration notes and updated compatibility tests.
-- [ ] Contract compatibility checks pass:
-  - `cargo test -q --test mode123_nonregression scan_engagement_contract_fixture_passes -- --test-threads=1`
-  - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
-
-## 3. Environment Prerequisites
-
-- [ ] Toolchain and core dependencies are available:
+- [ ] Core tools are available:
   - `rustc --version`
   - `cargo --version`
   - `circom --version`
-  - `snarkjs --help`
+  - `snarkjs --version`
   - `z3 --version`
-- [ ] Local Circom assets validate cleanly (if using internalized bins):
-  - `cargo run --release --bin zk-fuzzer -- bins bootstrap --dry-run`
+- [ ] Local Circom assets validate:
+  - `target/release/zk-fuzzer bins bootstrap --dry-run`
 
-## 4. Build And Test Baseline
+## 3. Build And Test Baseline
 
 - [ ] Formatting and lint pass:
   - `cargo fmt --all -- --check`
   - `cargo clippy --all-targets --all-features -- -D warnings`
-- [ ] Test suites pass:
+- [ ] Main test suites pass:
   - `cargo test --all-features --verbose`
   - `cargo test --doc --all-features`
 
-## 5. Release Validation Gates (Canonical Path)
+## 4. Benchmark Evidence
 
-- [ ] Fresh direct-run evidence generated (run twice so the gate has two consecutive summaries):
-  - `cargo run --quiet --release --bin zkpatternfuzz -- --config-profile dev --alias always --target-circuit /path/to/target.circom --framework circom --main-component main --workers 1 --iterations 50 --timeout 10 --output-root artifacts/benchmark_runs --report-json artifacts/benchmark_runs/latest_findings.json`
-- [ ] Release candidate gate passes with readiness, maturity, streak, hermetic include/toolchain enforcement, and backend capacity fitness (large-circuit memory + throughput):
-  - `./scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2 --required-backends noir,cairo,halo2 --required-maturity-backends circom,noir,cairo,halo2 --min-backend-completion-rate 0.90 --min-backend-selector-matching-total-per-backend noir=25,cairo=4,halo2=4 --min-backend-enabled-targets 5 --min-backend-maturity-score 4.5 --backend-maturity-consecutive-days 14 --backend-maturity-consecutive-target-score 5.0 --backend-maturity-consecutive-backends circom,noir,cairo,halo2 --circom-flake-consecutive-days 14 --backend-capacity-fitness-min-median-completed-per-sec 0.005 --backend-capacity-fitness-max-rss-kb 262144 --max-backend-runtime-error 0 --max-backend-preflight-failed 0 --max-backend-run-outcome-missing-rate 0.05`
-  - verify artifacts:
-    - `artifacts/release_candidate_validation/evidence_bundle_manifest.json`
-    - `artifacts/release_candidate_validation/backend_release_blockers.json`
-  - local fast-triage (non-canonical) when throughput/memory reports already exist:
-    - `./scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2 --backend-capacity-fitness-throughput-report artifacts/backend_throughput/latest_report.json --backend-capacity-fitness-memory-report artifacts/memory_profiles/latest_report.json --backend-capacity-fitness-skip-throughput-run --backend-capacity-fitness-skip-memory-run`
-- [ ] GitHub Actions `Release Validation` evidence recorded with matching thresholds and archived artifacts:
-  - Scheduled strict streak lane runs daily (03:20 UTC) with 14-day maturity/flake enforcement.
-  - Local daily streak triage shortcut: `./scripts/run_release_streak_status.sh` (use `--enforce` for CI-like non-zero exit on streak failure).
-  - Manual `workflow_dispatch` run includes rollback validation (`stable_ref`) for cutover sign-off.
+- [ ] Fresh benchmark summaries are generated under `artifacts/benchmark_runs`:
+
+```bash
+target/release/zk0d_benchmark \
+  --config-profile dev \
+  --trials 2 \
+  --jobs 1 \
+  --batch-jobs 1 \
+  --workers 1 \
+  --iterations 50 \
+  --timeout 10 \
+  --output-dir artifacts/benchmark_runs
+```
+
+- [ ] If you need a lighter operator wrapper for spot checks, `scripts/run_benchmarks.sh --quick` still works, but the canonical release gate consumes `artifacts/benchmark_runs`.
+
+## 5. Release Candidate Gate
+
+- [ ] Release gate passes:
+
+```bash
+./scripts/release_candidate_gate.sh \
+  --bench-root artifacts/benchmark_runs \
+  --required-passes 2 \
+  --required-backends noir,cairo,halo2 \
+  --required-maturity-backends circom,noir,cairo,halo2 \
+  --min-backend-completion-rate 0.90 \
+  --min-backend-selector-matching-total-per-backend noir=25,cairo=4,halo2=4 \
+  --min-backend-enabled-targets 5 \
+  --min-backend-maturity-score 4.5 \
+  --backend-maturity-consecutive-days 14 \
+  --backend-maturity-consecutive-target-score 5.0 \
+  --backend-maturity-consecutive-backends circom,noir,cairo,halo2 \
+  --circom-flake-consecutive-days 14 \
+  --backend-capacity-fitness-min-median-completed-per-sec 0.005 \
+  --backend-capacity-fitness-max-rss-kb 262144 \
+  --max-backend-runtime-error 0 \
+  --max-backend-preflight-failed 0 \
+  --max-backend-run-outcome-missing-rate 0.05
+```
+
+- [ ] Verify the release artifacts exist:
+  - `artifacts/release_candidate_validation/evidence_bundle_manifest.json`
+  - `artifacts/release_candidate_validation/backend_release_blockers.json`
 
 ## 6. Documentation And Risk Notes
 
-- [ ] `CHANGELOG.md` updated with user-facing changes and fixes.
-- [ ] `README.md` and relevant docs updated for new flags/workflows.
-- [ ] Known risks and deferred items explicitly documented.
-- [ ] If behavior or defaults changed, migration notes are included.
+- [ ] `CHANGELOG.md` updated.
+- [ ] `README.md` and relevant docs updated for workflow or flag changes.
+- [ ] Deferred risks and known limitations documented.
 
-## 7. Artifact And Rollback Validation
+## 7. Rollback Validation
 
-- [ ] Release build and smoke checks pass:
-  - `cargo build --release --all-features`
-  - `./target/release/zk-fuzzer --help`
 - [ ] Previous stable reference documented.
-- [ ] Rollback validation passes:
-  - `./scripts/rollback_validate.sh --stable-ref <previous_stable_tag_or_commit>`
-- [ ] Rollback owner, communication channel, and explicit abort criteria are documented.
+- [ ] Rollback check passes:
+
+```bash
+./scripts/rollback_validate.sh --stable-ref <previous_stable_tag_or_commit>
+```
+
+- [ ] Rollback owner and abort criteria recorded.
 
 ## 8. Sign-Off
 
@@ -77,8 +99,3 @@ Scope update (2026-02-22): this checklist keeps release-blocking gates only. Exp
 - [ ] Security sign-off.
 - [ ] Operations sign-off.
 - [ ] Final go/no-go recorded with date and commit/tag.
-
-## Notes (Informational, Non-Blocking)
-
-- Heavy backend readiness evidence snapshot is already captured under `artifacts/backend_readiness/latest_report.json` plus backend-specific reports dated 2026-02-21.
-- Use `./scripts/backend_readiness_dashboard.sh` when you need to refresh readiness artifacts outside the canonical release gate flow.

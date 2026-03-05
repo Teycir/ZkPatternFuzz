@@ -2,69 +2,92 @@
 
 This playbook turns scan output into proof-bearing security results.
 
-## Why The Tool Feels Low-Signal
+## Goal
 
-Most runs stop at discovery artifacts (`findings`, reason codes, `pending_proof`) and never close the proof branch.
-Without deterministic replay or bounded non-exploit evidence, output stays triage-only.
+Most discovery runs stop at triage artifacts. For this repository, a useful alpha loop means each serious candidate gets pushed toward one of two evidence states:
 
-## Alpha Definition
+- `exploitable`
+- `not exploitable within bounds`
 
-For this repo, "alpha" means:
-- high-value targets prioritized,
-- candidates quickly converted into replay/falsification attempts,
-- each target ends as `exploitable` or `not exploitable within bounds` (not just `pending_proof`).
+Anything else remains `pending_proof`.
 
-## Required Adjustments
+## 1. Freeze The Environment
 
-1. Optimize for proof-closure, not finding-count.
-2. Keep discovery runs bounded and deterministic (fixed seed/timeouts).
-3. Run a proof branch immediately after each completed target.
-4. Record one-command replay for every conclusion.
-5. Track blockers by reason code (`backend_toolchain_mismatch`, `selector_mismatch`, etc.).
-6. Freeze toolchain paths from local installs before every campaign.
-
-## Operator Workflow
-
-### 1) Freeze environment
+Record the exact toolchain you are using before you run discovery:
 
 ```bash
-source build/toolchains/installed_tools.env
+rustc --version
+cargo --version
+circom --version
+snarkjs --version
+nargo --version
+scarb --version
+z3 --version
 ```
 
-### 2) Run narrow discovery directly (JSON config + YAML pattern)
+Cross-check against [TOOLS_AVAILABLE_ON_HOST.md](TOOLS_AVAILABLE_ON_HOST.md).
+
+## 2. Run Narrow Discovery
+
+For direct batch discovery, export writable paths and stage timeouts:
 
 ```bash
-cargo run --release --bin zkpatternfuzz -- \
-  --config-json targets/external/target_run_overrides/ext015_orion_svm_classifier_test.json \
+export ZKF_SCAN_OUTPUT_ROOT="$PWD/artifacts/alpha_manual"
+export ZKF_RUN_SIGNAL_DIR="$PWD/artifacts/alpha_manual/run_signals"
+export ZKF_BUILD_CACHE_DIR="$PWD/artifacts/alpha_manual/build_cache"
+export ZKF_SHARED_BUILD_CACHE_DIR="$PWD/artifacts/alpha_manual/build_cache"
+export ZKF_ZKPATTERNFUZZ_DETECTION_STAGE_TIMEOUT_SECS=1800
+export ZKF_ZKPATTERNFUZZ_PROOF_STAGE_TIMEOUT_SECS=3600
+export ZKF_ZKPATTERNFUZZ_STUCK_STEP_WARN_SECS=120
+mkdir -p "$ZKF_SCAN_OUTPUT_ROOT" "$ZKF_RUN_SIGNAL_DIR" "$ZKF_BUILD_CACHE_DIR"
+```
+
+Example narrow discovery run:
+
+```bash
+target/release/zkpatternfuzz \
   --pattern-yaml campaigns/cve/patterns/cveX34_cairo_multiplier_assert_readiness_probe.yaml \
-  --target-circuit /media/elements/Repos/zkml/orion/tests/ml/svm_classifier_test.cairo \
+  --target-circuit tests/cairo_programs/multiplier.cairo \
   --framework cairo \
   --main-component main \
-  --output-root artifacts/external_targets/manual \
-  --report-json artifacts/external_targets/manual/latest_findings.json
+  --jobs 1 \
+  --workers 2 \
+  --iterations 100 \
+  --timeout 30 \
+  --dry-run \
+  --emit-reason-tsv
 ```
 
-### 3) Convert each completed target into proof artifacts
+Remove `--dry-run` when you are ready to execute.
 
-Create scaffold:
+## 3. Create Proof Artifacts Manually
+
+When a target moves beyond triage, create a dedicated evidence directory, for example:
 
 ```bash
-scripts/scaffold_proof_bundle.sh \
-  --target EXT-015 \
-  --root artifacts/external_targets/ext_batch_013/reports \
-  --mode non_exploit
+mkdir -p artifacts/proof_runs/<case_id>
 ```
 
-Then fill:
-- `replay_command.txt` with exact deterministic command,
-- `exploit_notes.md` **or** `no_exploit_proof.md`,
-- `impact.md`,
-- replay log file referenced by notes.
+Required files:
 
-## Minimal Proof KPIs
+- `replay_command.txt`
+- `exploit_notes.md` or `no_exploit_proof.md`
+- `impact.md`
+- replay or formal log (`*_replay.log`, solver log, or equivalent)
+
+Minimum contents:
+
+- exact target identity,
+- exact command line,
+- exact input or witness material,
+- expected behavior,
+- observed behavior,
+- final conclusion.
+
+## 4. Minimal KPIs
 
 - `proof_closure_rate = closed_targets / completed_targets`
-- `pending_proof_backlog = targets still lacking exploit/non-exploit pack`
-- `tooling_blocker_rate = backend/toolchain blocker targets / total targets`
+- `pending_proof_backlog = targets still lacking exploit or non-exploit evidence`
+- `tooling_blocker_rate = backend/toolchain blockers / total targets`
 
-Use these KPIs to decide if the run produced alpha.
+If those numbers are not improving, discovery output is still mostly triage-only.

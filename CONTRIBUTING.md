@@ -27,7 +27,7 @@ Be respectful, inclusive, and professional. We're all here to improve ZK securit
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/ZkPatternFuzz.git
+git clone https://github.com/Teycir/ZkPatternFuzz.git
 cd ZkPatternFuzz
 
 # Build the project
@@ -37,7 +37,7 @@ cargo build
 cargo test
 
 # Run with example campaign
-cargo run -- --config campaigns/example_audit.yaml
+cargo run -- --config campaigns/examples/defi_audit.yaml
 ```
 
 ## Development Workflow

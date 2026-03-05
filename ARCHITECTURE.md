@@ -4,26 +4,13 @@
 
 ZkPatternFuzz is a modular security testing framework for zero-knowledge circuits that automates accumulated audit expertise through pattern-based detection. This document describes the internal architecture, design decisions, and extension points.
 
-## Current Status (2026-02-23)
+## Current Status (2026-03-05)
 
-**Phase 1-6 Complete:**
-- Vulnerable recall: 80% (target: ≥80%)
-- Safe false-positive rate: 0% (target: ≤5%)
-- Overall completion rate: 100%
-- Attack stage reach rate: 100%
+This file is primarily a structural overview. Live validation metrics and maturity snapshots change faster than the architecture does, so use:
 
-**Phase 8 Active: Backend Maturity Program**
-- All backends at 5.0/5.0 maturity score
-- Circom: 2/14 consecutive days at 5.0 (flake-free streak tracking)
-- Noir: 1/14 consecutive days at 5.0 (prove/verify validated)
-- Cairo: 1/14 consecutive days at 5.0 (Stone prover integration)
-- Halo2: 1/14 consecutive days at 5.0 (real execution mode)
-
-**Backend Maturity:**
-- Circom: Production-ready (5.0/5.0, keygen preflight: 5/5 passes)
-- Noir: Production-ready (5.0/5.0, barretenberg integration validated)
-- Halo2: Production-ready (5.0/5.0, scaffold execution stable)
-- Cairo: Production-ready (5.0/5.0, Cairo0/Cairo1 support)
+- `artifacts/` for current evidence,
+- [ROADMAP.md](ROADMAP.md) for dated progress logs,
+- [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) for the active release gate.
 
 ## Validation Methodology
 
@@ -82,7 +69,7 @@ ExecutorFactory::create(framework, path, component)
   -> Arc<dyn CircuitExecutor>
 ```
 
-### 3. Attack Modules (`src/attacks/`)
+### 3. Attack Modules (`crates/zk-attacks/`, `src/oracles/`)
 
 Specialized vulnerability detectors implementing the `Attack` trait.
 
@@ -262,16 +249,17 @@ Hardened execution and evidence tooling to avoid hangs and crashes.
 Automated testing and quality gates for release validation.
 
 **Components:**
-- `zk0d_benchmark` (`src/bin/zk0d_benchmark.rs`): parallel benchmark runner with configurable profiles
-- `zkpatternfuzz` (`src/bin/zkpatternfuzz.rs`): batch execution for campaign matrices
-- `zk0d_matrix` (`src/bin/zk0d_matrix.rs`): multi-target validation orchestrator
+- `zk0d_benchmark` (`src/bin/zk0d_benchmark.rs`): repeated-trial benchmark runner
+- `zkpatternfuzz` (`src/bin/zkpatternfuzz.rs`): batch execution for registry aliases, collections, and explicit pattern lists
+- `zk0d_batch` (`src/bin/zk0d_batch.rs`): matrix-oriented batch runner used by readiness wrappers
+- `zkf_checks` (`src/bin/zkf_checks.rs`): repo hygiene and prod/test separation checks
 
 **Validation Scripts:**
-- `fresh_clone_bootstrap_validate.sh`: validates clean-clone operability
-- `keygen_preflight_validate.sh`: validates keygen readiness across targets
-- `phase3a_validate.sh`: backend-heavy integration checks
-- `release_candidate_validate_twice.sh`: two-attempt release gate
-- `rollback_validate.sh`: rollback safety validation
+- `scripts/run_std_smoke.sh`, `scripts/run_std_standard.sh`, `scripts/run_std_deep.sh`: routine standardized runs
+- `scripts/run_noir_readiness.sh`, `scripts/run_cairo_readiness.sh`, `scripts/run_halo2_readiness.sh`: backend readiness lanes
+- `scripts/backend_readiness_dashboard.sh`: aggregate readiness gate
+- `scripts/release_candidate_gate.sh`: release gate
+- `scripts/rollback_validate.sh`: rollback safety validation
 
 **Benchmark Suites:**
 - `safe_regression`: Known-safe circuits for FPR measurement
@@ -459,7 +447,7 @@ Framework::MyBackend => {
 
 ### Adding a New Attack
 
-1. Create module in `src/attacks/`:
+1. Create the implementation in `crates/zk-attacks/` (and wire any supporting oracle code under `src/oracles/` when needed):
 
 ```rust
 pub struct MyAttack {

@@ -170,6 +170,6 @@ profile.merge_into(&mut config.campaign.parameters.additional);
 
 ## See Also
 
-- [Resume Guide](./RESUME_GUIDE.md) - Continuing campaigns
-- [Evidence Mode](./EVIDENCE_MODE.md) - Generating proof-level evidence
-- [Attack Types](./ATTACK_TYPES.md) - Available attack vectors
+- [TUTORIAL.md](./TUTORIAL.md) - Current CLI walkthrough
+- [scan_modes.md](./scan_modes.md) - Current pattern-selection model
+- [ATTACK_DSL_SPEC.md](./ATTACK_DSL_SPEC.md) - Current attack configuration schema
