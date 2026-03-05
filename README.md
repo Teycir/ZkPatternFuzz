@@ -23,7 +23,7 @@ The repository also ships supporting binaries:
 - `zk0d_benchmark`: repeated benchmark-suite runner.
 - `zkf_checks`: repo hygiene and policy checks.
 
-This README avoids point-in-time maturity percentages. For dated validation snapshots, use [ROADMAP.md](ROADMAP.md) and the artifacts under `artifacts/`.
+This README avoids point-in-time maturity percentages. For dated validation snapshots, use [docs/ROADMAP.md](docs/ROADMAP.md) and the artifacts under `artifacts/`.
 
 Attribution and contact: [teycirbensoltane.tn](https://teycirbensoltane.tn) | `teycir@pxdmail.net`
 
@@ -240,8 +240,10 @@ Operational references:
 
 The architecture and roadmap files are still useful, but they contain dated snapshots. Read them with the stated dates in mind:
 
-- [ARCHITECTURE.md](ARCHITECTURE.md)
-- [ROADMAP.md](ROADMAP.md)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [docs/ROADMAP.md](docs/ROADMAP.md)
+- [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
+- [docs/AGENTS.md](docs/AGENTS.md)
 
 ## License
 
