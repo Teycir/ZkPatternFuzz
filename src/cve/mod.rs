@@ -738,6 +738,13 @@ fn is_infrastructure_error_message(message: &str) -> bool {
 }
 
 fn detect_framework(path: &Path) -> anyhow::Result<Framework> {
+    if matches!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some("Nargo.toml")
+    ) {
+        return Ok(Framework::Noir);
+    }
+
     match path.extension().and_then(|e| e.to_str()) {
         Some("circom") => Ok(Framework::Circom),
         Some("nr") => Ok(Framework::Noir),

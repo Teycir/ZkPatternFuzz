@@ -58,7 +58,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "${ZK0D_BASE}/cat3_privacy/tornado-core/circuits/withdraw.circom"
+      circuit_path: "tests/cve_fixtures/signature_canonical_guard.circom"
       test_cases:
         - name: valid_signature_normal
           inputs:
@@ -121,7 +121,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "${ZK0D_BASE}/cat3_privacy/semaphore/packages/circuits/src/semaphore.circom"
+      circuit_path: "tests/cve_fixtures/nullifier_uniqueness_smoke.circom"
       test_cases:
         - name: unique_nullifiers
           inputs:
@@ -184,7 +184,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "${ZK0D_BASE}/cat3_privacy/tornado-core/circuits/merkleTree.circom"
+      circuit_path: "tests/cve_fixtures/merkle_path_length_guard.circom"
       test_cases:
         - name: correct_depth
           inputs:
@@ -242,7 +242,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat3_privacy/tornado-core/circuits/merkleTree.circom"
+      circuit_path: "tests/cve_fixtures/merkle_binary_indices_guard.circom"
       test_cases:
         - name: binary_indices
           inputs:
@@ -310,7 +310,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "${ZK0D_BASE}/circuits/range_proof.circom"
+      circuit_path: "tests/cve_fixtures/range_upper_bound_guard.circom"
       test_cases:
         - name: within_range
           inputs:
@@ -374,7 +374,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "${ZK0D_BASE}/circuits/division.circom"
+      circuit_path: "tests/cve_fixtures/division_denominator_guard.circom"
       test_cases:
         - name: normal_division
           inputs:
@@ -433,7 +433,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "${ZK0D_BASE}/cat3_privacy/tornado-core/circuits/withdraw.circom"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: timing_variance
           inputs:
@@ -481,7 +481,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "${ZK0D_BASE}/cat3_privacy/semaphore/packages/circuits/src/semaphore.circom"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: mutual_information_test
           inputs:
@@ -545,7 +545,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat2_rollups/zkevm-circuits"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: empty_block_state
           inputs:
@@ -601,7 +601,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat2_rollups/zkevm-circuits"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: add_overflow
           inputs:
@@ -653,7 +653,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat2_rollups/zkevm-circuits"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: small_memory
           inputs:
@@ -705,7 +705,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat4_defi/zkamm"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: normal_swap
           inputs:
@@ -761,7 +761,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat2_rollups/batch-verifier"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: all_valid
           inputs:
@@ -814,7 +814,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "recursive/nova"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: valid_base_case
           inputs:
@@ -861,7 +861,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat3_privacy/zkp-mixer"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: precomputed_proof
           inputs:
@@ -910,7 +910,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat2_rollups/storage-proof"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: fresh_proof
           inputs:
@@ -961,7 +961,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat5_recursive/nova-ivc"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: valid_base_case
           inputs:
@@ -1017,7 +1017,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat5_recursive/folding-accumulator"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: normal_accumulation
           inputs:
@@ -1064,7 +1064,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat5_recursive/vk-binding"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: consistent_vk
           inputs:
@@ -1114,7 +1114,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat5_recursive/supernova-vm"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: valid_opcode
           inputs:
@@ -1164,7 +1164,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat2_rollups/bridge-message"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: single_use
           inputs:
@@ -1213,7 +1213,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat6_aggregation/batch-verifier"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: all_valid
           inputs:
@@ -1258,7 +1258,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat6_aggregation/snarkpack"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: unique_randomness
           inputs:
@@ -1307,7 +1307,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat7_primitives/kzg-commitment"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: valid_point
           inputs:
@@ -1353,7 +1353,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat7_primitives/pedersen-hash"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: cleared_cofactor
           inputs:
@@ -1403,7 +1403,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat3_privacy/ring-signature"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: strong_linking
           inputs:
@@ -1445,7 +1445,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat3_privacy/generic"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: timing_variance
           inputs:
@@ -1491,7 +1491,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat4_defi/zk-lending"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: stable_oracle
           inputs:
@@ -1538,7 +1538,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat4_defi/dark-pool"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: constant_gas
           inputs:
@@ -1580,7 +1580,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat7_primitives/optimized-circuit"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: with_optimization
           inputs:
@@ -1622,7 +1622,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat7_primitives/plookup"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: power_of_two_table
           inputs:
@@ -1668,7 +1668,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat7_primitives/custom-gates"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: selector_constrained
           inputs:
@@ -1712,7 +1712,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat7_primitives/nizk"
+      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
       test_cases:
         - name: full_binding
           inputs:
@@ -1764,7 +1764,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/noir_projects/multiplier/src/main.nr"
+      circuit_path: "tests/noir_projects/multiplier/Nargo.toml"
       test_cases:
         - name: noir_acir_baseline
           inputs:

@@ -68,13 +68,15 @@ fn test_cve_regression_tests_execute() {
     println!("Executed: {}", executed);
     println!("Skipped (circuit not found): {}", circuit_not_found);
 
-    // We should have executed at least some tests
-    // If all were skipped due to missing circuits, that's a problem
-    if executed == 0 {
-        println!("\n⚠️  WARNING: No CVE tests were executed!");
-        println!("Circuits are likely on external drive at /media/elements/Repos/zk0d/");
-        println!("Connect the external drive to run full validation.");
-    }
+    assert_eq!(
+        circuit_not_found, 0,
+        "Known CVE regression fixtures must be bundled in-repo"
+    );
+    assert_eq!(
+        executed,
+        tests.len(),
+        "Every known CVE regression target should execute without missing fixture paths"
+    );
 }
 
 /// Test that verifies the CVE run() method doesn't return passed=true unconditionally

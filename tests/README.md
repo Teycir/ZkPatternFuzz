@@ -6,6 +6,12 @@ This directory contains fuzzing configs for testing real-world ZK circuits.
 
 The campaigns in this directory target circuits from `${ZK0D_BASE:-/media/elements/Repos/zk0d}`, organized by category:
 
+## Portable CVE Fixtures
+
+`tests/cve_fixtures/` contains the tiny in-repo circuits used by
+`templates/known_vulnerabilities.yaml` so CVE regression wiring can be exercised
+without external mounts or workstation-specific hardware layouts.
+
 ### Privacy Protocols (`cat3_privacy/`)
 | Campaign | Target | Priority |
 |----------|--------|----------|
