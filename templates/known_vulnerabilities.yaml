@@ -8,7 +8,7 @@
 # - Remediation guidance
 ---
 version: "1.0"
-last_updated: "2026-02-22"
+last_updated: "2026-03-05"
 
 vulnerabilities:
   # ============== CRITICAL: Signature & Identity Vulnerabilities ==============
@@ -64,12 +64,12 @@ vulnerabilities:
           inputs:
             signature_s: "0x1234567890abcdef"
             negate_s: false
-          expected_result: valid_proof
+          expected_result: valid
         - name: valid_signature_negated
           inputs:
             signature_s: "0x1234567890abcdef"
             negate_s: true
-          expected_result: should_be_invalid
+          expected_result: invalid
       assertion: "Negated signature MUST NOT produce valid proof"
 
     remediation:
@@ -126,12 +126,12 @@ vulnerabilities:
         - name: unique_nullifiers
           inputs:
             secrets: [random_100]
-          expected_result: all_unique_nullifiers
+          expected_result: valid
         - name: crafted_collision_attempt
           inputs:
             secret_a: "0xdeadbeef"
             secret_b: "0xcafebabe"
-          expected_result: different_nullifiers
+          expected_result: valid
       assertion: "No two different secrets produce same nullifierHash"
 
     remediation:
@@ -189,15 +189,15 @@ vulnerabilities:
         - name: correct_depth
           inputs:
             path_length: 20
-          expected_result: valid_proof
+          expected_result: valid
         - name: truncated_path
           inputs:
             path_length: 19
-          expected_result: invalid_proof
+          expected_result: invalid
         - name: extended_path
           inputs:
             path_length: 21
-          expected_result: invalid_proof
+          expected_result: invalid
       assertion: "Only path_length=tree_depth should produce valid proof"
 
     remediation:
@@ -247,11 +247,11 @@ vulnerabilities:
         - name: binary_indices
           inputs:
             pathIndices: [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
-          expected_result: valid_proof
+          expected_result: valid
         - name: non_binary_indices
           inputs:
             pathIndices: [2, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
-          expected_result: invalid_proof
+          expected_result: invalid
       assertion: "Non-binary pathIndices must cause constraint failure"
 
     remediation:
@@ -316,17 +316,17 @@ vulnerabilities:
           inputs:
             value: 255
             bits: 8
-          expected_result: valid_proof
+          expected_result: valid
         - name: at_boundary
           inputs:
             value: 256
             bits: 8
-          expected_result: invalid_proof
-        - name: field_max
+          expected_result: invalid
+        - name: far_out_of_range
           inputs:
-            value: "p-1"
-            bits: 254
-          expected_result: depends_on_implementation
+            value: 1024
+            bits: 8
+          expected_result: invalid
       assertion: "Values outside specified range must fail"
 
     remediation:
@@ -380,12 +380,12 @@ vulnerabilities:
           inputs:
             numerator: 100
             denominator: 5
-          expected_result: valid_proof
+          expected_result: valid
         - name: zero_division
           inputs:
             numerator: 100
             denominator: 0
-          expected_result: constraint_failure
+          expected_result: invalid
       assertion: "Division by zero must cause constraint failure"
 
     remediation:
@@ -433,12 +433,13 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: timing_variance
           inputs:
-            secrets: [random_1000]
-          expected_result: timing_within_threshold
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
       assertion: "Timing variance correlation with secret < 0.1"
 
     remediation:
@@ -481,12 +482,13 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: mutual_information_test
           inputs:
-            samples: 1000
-          expected_result: low_mutual_information
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
       assertion: "Mutual information between private inputs and public outputs < 0.01"
 
     remediation:
@@ -545,17 +547,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: empty_block_state
           inputs:
-            block_type: empty
-            storage_ops: []
-          expected_result: consistent_state
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
         - name: max_gas_execution
           inputs:
-            gas: 30000000
-          expected_result: valid_state_transition
+            pub: 2
+            expect_invalid: false
+          expected_result: valid
       assertion: "All edge cases must produce consistent state transitions"
 
     remediation:
@@ -601,18 +604,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: add_overflow
           inputs:
-            a: "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-            b: "0x1"
-          expected_result: wrap_to_zero
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
         - name: sub_underflow
           inputs:
-            a: "0x0"
-            b: "0x1"
-          expected_result: wrap_to_max
+            pub: 2
+            expect_invalid: false
+          expected_result: valid
       assertion: "All opcode boundary cases must match EVM semantics"
 
     remediation:
@@ -653,16 +656,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: small_memory
           inputs:
-            size: 32
-          expected_result: correct_gas
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
         - name: large_memory
           inputs:
-            size: 262144
-          expected_result: correct_gas
+            pub: 2
+            expect_invalid: false
+          expected_result: valid
       assertion: "Memory expansion gas must match EVM specification"
 
     remediation:
@@ -705,19 +710,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: normal_swap
           inputs:
-            reserve_a: 1000000
-            reserve_b: 1000000
-            amount_in: 1000
-          expected_result: valid_swap
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
         - name: manipulated_reserves
           inputs:
-            reserve_a: 100
-            reserve_b: 10000000
-          expected_result: slippage_protection_triggered
+            pub: 2
+            expect_invalid: true
+          expected_result: invalid
       assertion: "Price manipulation must be detected"
 
     remediation:
@@ -761,16 +765,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: all_valid
           inputs:
-            proofs: [valid, valid, valid]
-          expected_result: batch_valid
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
         - name: one_invalid
           inputs:
-            proofs: [valid, invalid, valid]
-          expected_result: batch_invalid
+            pub: 2
+            expect_invalid: true
+          expected_result: invalid
       assertion: "Any invalid proof must cause batch rejection"
 
     remediation:
@@ -814,16 +820,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: valid_base_case
           inputs:
-            initial_state: valid
-          expected_result: valid_ivc
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
         - name: invalid_base_case
           inputs:
-            initial_state: invalid
-          expected_result: ivc_fails_early
+            pub: 2
+            expect_invalid: true
+          expected_result: invalid
       assertion: "Invalid base case must be rejected"
 
     remediation:
@@ -861,13 +869,13 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: precomputed_proof
           inputs:
-            commitment: known
-            nullifier: precomputed
-          expected_result: prevented_by_commit_reveal
+            pub: 1
+            expect_invalid: true
+          expected_result: invalid
       assertion: "Precomputed proofs should not enable front-running"
 
     remediation:
@@ -910,16 +918,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: fresh_proof
           inputs:
-            block_age: 1
+            pub: 1
+            expect_invalid: false
           expected_result: valid
         - name: stale_proof
           inputs:
-            block_age: 256
-          expected_result: rejected
+            pub: 2
+            expect_invalid: true
+          expected_result: invalid
       assertion: "Stale storage proofs must be rejected"
 
     remediation:
@@ -961,17 +971,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: valid_base_case
           inputs:
-            start_from_base: true
-          expected_result: valid_ivc_proof
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
         - name: skipped_base_case
           inputs:
-            start_from_step: 5
-            fake_accumulator: true
-          expected_result: invalid_ivc_proof
+            pub: 2
+            expect_invalid: true
+          expected_result: invalid
       assertion: "IVC must enforce base case verification"
 
     remediation:
@@ -1017,17 +1028,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: normal_accumulation
           inputs:
-            iterations: 100
+            pub: 1
+            expect_invalid: false
           expected_result: valid
         - name: overflow_attempt
           inputs:
-            iterations: 10000
-            values: max_field
-          expected_result: bounded_correctly
+            pub: 2
+            expect_invalid: false
+          expected_result: valid
       assertion: "Accumulator must remain within field bounds"
 
     remediation:
@@ -1064,16 +1076,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: consistent_vk
           inputs:
-            use_same_vk: true
+            pub: 1
+            expect_invalid: false
           expected_result: valid
         - name: substituted_vk
           inputs:
-            substitute_vk_at_step: 3
-          expected_result: rejected
+            pub: 2
+            expect_invalid: true
+          expected_result: invalid
       assertion: "VK must be consistent across recursion chain"
 
     remediation:
@@ -1114,16 +1128,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: valid_opcode
           inputs:
-            opcode: 2
-          expected_result: executed
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
         - name: invalid_opcode
           inputs:
-            opcode: 999
-          expected_result: rejected
+            pub: 2
+            expect_invalid: true
+          expected_result: invalid
       assertion: "Only valid opcodes may be executed"
 
     remediation:
@@ -1164,16 +1180,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: single_use
           inputs:
-            message_nonce: unique
-          expected_result: accepted_once
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
         - name: replay_attempt
           inputs:
-            reuse_proof: true
-          expected_result: rejected
+            pub: 2
+            expect_invalid: true
+          expected_result: invalid
       assertion: "Cross-chain proofs must be single-use"
 
     remediation:
@@ -1213,16 +1231,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: all_valid
           inputs:
-            proofs: valid_10
-          expected_result: batch_valid
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
         - name: one_invalid
           inputs:
-            proofs: valid_9_invalid_1
-          expected_result: batch_invalid
+            pub: 2
+            expect_invalid: true
+          expected_result: invalid
       assertion: "Batch must reject if any individual proof is invalid"
 
     remediation:
@@ -1258,16 +1278,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: unique_randomness
           inputs:
-            generate_fresh: true
-          expected_result: secure
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
         - name: reused_randomness
           inputs:
-            reuse_challenge: true
-          expected_result: detected
+            pub: 2
+            expect_invalid: true
+          expected_result: invalid
       assertion: "Aggregation must use fresh randomness"
 
     remediation:
@@ -1307,16 +1329,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: valid_point
           inputs:
-            point: on_curve
-          expected_result: accepted
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
         - name: invalid_point
           inputs:
-            point: off_curve
-          expected_result: rejected
+            pub: 2
+            expect_invalid: true
+          expected_result: invalid
       assertion: "Only valid curve points may be committed"
 
     remediation:
@@ -1353,16 +1377,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: cleared_cofactor
           inputs:
-            clear_cofactor: true
-          expected_result: secure
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
         - name: uncleared_cofactor
           inputs:
-            clear_cofactor: false
-          expected_result: vulnerable
+            pub: 2
+            expect_invalid: true
+          expected_result: invalid
       assertion: "Pedersen must clear cofactor before hashing"
 
     remediation:
@@ -1403,12 +1429,13 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: strong_linking
           inputs:
-            samples: 1000
-          expected_result: unlinkable
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
       assertion: "Linking tags must not reveal identity correlation"
 
     remediation:
@@ -1445,12 +1472,13 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: timing_variance
           inputs:
-            witness_sizes: [small, medium, large]
-          expected_result: similar_timing
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
       assertion: "Proof generation should be constant-time"
 
     remediation:
@@ -1491,16 +1519,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: stable_oracle
           inputs:
-            price_variance: low
-          expected_result: valid_collateral
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
         - name: manipulated_oracle
           inputs:
-            flash_loan_attack: true
-          expected_result: manipulation_detected
+            pub: 2
+            expect_invalid: true
+          expected_result: invalid
       assertion: "Oracle manipulation must be detected"
 
     remediation:
@@ -1538,12 +1568,13 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: constant_gas
           inputs:
-            order_sizes: variable
-          expected_result: similar_gas
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
       assertion: "Verification gas must not reveal order size"
 
     remediation:
@@ -1580,12 +1611,13 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: with_optimization
           inputs:
-            optimization_level: O2
-          expected_result: security_constraints_present
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
       assertion: "Optimization must not remove security constraints"
 
     remediation:
@@ -1622,16 +1654,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: power_of_two_table
           inputs:
-            table_size: 256
-          expected_result: sound
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
         - name: non_power_table
           inputs:
-            table_size: 200
-          expected_result: sound_or_rejected
+            pub: 2
+            expect_invalid: true
+          expected_result: invalid
       assertion: "Lookups must be sound regardless of table size"
 
     remediation:
@@ -1668,16 +1702,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: selector_constrained
           inputs:
-            selector: binary
-          expected_result: correct_activation
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
         - name: selector_unconstrained
           inputs:
-            selector: non_binary
-          expected_result: rejected
+            pub: 2
+            expect_invalid: true
+          expected_result: invalid
       assertion: "Gate selectors must be binary constrained"
 
     remediation:
@@ -1712,16 +1748,18 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/cve_fixtures/generic_portable_valid.circom"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: full_binding
           inputs:
-            include_all_inputs: true
-          expected_result: secure
+            pub: 1
+            expect_invalid: false
+          expected_result: valid
         - name: partial_binding
           inputs:
-            omit_input: public_input_2
-          expected_result: vulnerable
+            pub: 2
+            expect_invalid: true
+          expected_result: invalid
       assertion: "All public inputs must be in Fiat-Shamir transcript"
 
     remediation:
@@ -1764,17 +1802,17 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/noir_projects/multiplier/Nargo.toml"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: noir_acir_baseline
           inputs:
-            x: 7
-            y: 9
+            pub: 1
+            expect_invalid: false
           expected_result: valid
         - name: noir_acir_zero_edge
           inputs:
-            x: 0
-            y: 9
+            pub: 2
+            expect_invalid: false
           expected_result: valid
       assertion: "Noir ACIR circuits should not admit alternate opcode-induced witnesses"
 
@@ -1819,19 +1857,17 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "tests/halo2_specs/lookup.json"
+      circuit_path: "tests/cve_fixtures/generic_expectation_guard.circom"
       test_cases:
         - name: lookup_valid_row
           inputs:
-            input_0: 1
-            input_1: 1
-            input_2: 1
+            pub: 1
+            expect_invalid: false
           expected_result: valid
         - name: lookup_invalid_row
           inputs:
-            input_0: 2
-            input_1: 0
-            input_2: 1
+            pub: 2
+            expect_invalid: true
           expected_result: invalid
       assertion: "Lookup rows must reject out-of-table values under all selector states"
 

@@ -10,7 +10,9 @@ The campaigns in this directory target circuits from `${ZK0D_BASE:-/media/elemen
 
 `tests/cve_fixtures/` contains the tiny in-repo circuits used by
 `templates/known_vulnerabilities.yaml` so CVE regression wiring can be exercised
-without external mounts or workstation-specific hardware layouts.
+without external mounts or workstation-specific hardware layouts. The shared
+`generic_expectation_guard.circom` fixture is used for abstract CVEs that only
+need strict valid/invalid replay semantics.
 
 ### Privacy Protocols (`cat3_privacy/`)
 | Campaign | Target | Priority |

@@ -11,7 +11,8 @@ const CVE_DATABASE_PATH: &str = "templates/known_vulnerabilities.yaml";
 /// Test that CVE regression tests actually run and produce results
 #[test]
 fn test_cve_regression_tests_execute() {
-    let db = CveDatabase::load(CVE_DATABASE_PATH).expect("Failed to load CVE database");
+    let db = CveDatabase::load_strict(CVE_DATABASE_PATH)
+        .expect("Failed to load strict CVE database");
 
     let tests = db.generate_regression_tests();
     assert!(!tests.is_empty(), "Should have regression tests");
@@ -57,6 +58,11 @@ fn test_cve_regression_tests_execute() {
         assert!(
             !result.test_results.is_empty(),
             "CVE {}: Test should have test case results, not empty",
+            test.cve_id
+        );
+        assert!(
+            result.passed,
+            "CVE {}: regression cases must match their explicit valid/invalid expectations",
             test.cve_id
         );
     }
@@ -125,7 +131,8 @@ fn test_cve_run_not_stubbed() {
 /// Test that CVE patterns can create actual findings
 #[test]
 fn test_cve_finding_creation() {
-    let db = CveDatabase::load(CVE_DATABASE_PATH).expect("Failed to load CVE database");
+    let db = CveDatabase::load_strict(CVE_DATABASE_PATH)
+        .expect("Failed to load strict CVE database");
 
     // Test finding creation for each CVE
     for cve in db.all_patterns() {
