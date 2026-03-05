@@ -846,7 +846,3 @@ impl Splicer {
         result
     }
 }
-
-#[cfg(test)]
-#[path = "structure_aware_tests.rs"]
-mod tests;

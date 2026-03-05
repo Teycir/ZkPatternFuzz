@@ -43,33 +43,7 @@ fn maybe_skip(test_name: &str) -> bool {
         return true;
     }
 
-    if !output_root_writable() {
-        eprintln!(
-            "Skipping {} (cannot write to ~/ZkFuzz output root in this environment)",
-            test_name
-        );
-        return true;
-    }
     false
-}
-
-fn output_root_writable() -> bool {
-    let home = match std::env::var("HOME") {
-        Ok(value) => PathBuf::from(value),
-        Err(_) => return false,
-    };
-    let output_root = home.join("ZkFuzz");
-    if std::fs::create_dir_all(&output_root).is_err() {
-        return false;
-    }
-
-    let probe = output_root.join(".mode123_smoke_write_probe");
-    if std::fs::write(&probe, b"probe").is_err() {
-        return false;
-    }
-
-    let _ = std::fs::remove_file(probe);
-    true
 }
 
 fn command_available(cmd: &str) -> bool {
@@ -111,7 +85,12 @@ fn assert_exists(path: &Path, label: &str, run_label: &str) {
     );
 }
 
-fn assert_engagement_contract(engagement_dir: &Path, run_label: &str) {
+fn assert_engagement_contract(
+    engagement_dir: &Path,
+    mode_folder: &str,
+    expected_command: &str,
+    run_label: &str,
+) {
     // Public contract files for scan-mode engagement output.
     let required = [
         (
@@ -135,20 +114,22 @@ fn assert_engagement_contract(engagement_dir: &Path, run_label: &str) {
             engagement_dir.join("incremental_results.jsonl"),
         ),
         (
-            "scan mode latest pointer",
-            engagement_dir.join("scan/latest.json"),
+            "mode latest pointer",
+            engagement_dir.join(mode_folder).join("latest.json"),
         ),
         (
-            "scan mode event stream",
-            engagement_dir.join("scan/events.jsonl"),
+            "mode event stream",
+            engagement_dir.join(mode_folder).join("events.jsonl"),
         ),
         (
-            "scan mode incremental results stream",
-            engagement_dir.join("scan/incremental_results.jsonl"),
+            "mode incremental results stream",
+            engagement_dir
+                .join(mode_folder)
+                .join("incremental_results.jsonl"),
         ),
         (
-            "scan mode run outcome",
-            engagement_dir.join("scan/run_outcome.json"),
+            "mode run outcome",
+            engagement_dir.join(mode_folder).join("run_outcome.json"),
         ),
     ];
     for (label, path) in required {
@@ -162,9 +143,9 @@ fn assert_engagement_contract(engagement_dir: &Path, run_label: &str) {
         .and_then(|v| v.as_object())
         .unwrap_or_else(|| panic!("summary.json missing object field 'modes'"));
     let scan = modes
-        .get("scan")
+        .get(mode_folder)
         .and_then(|v| v.as_object())
-        .unwrap_or_else(|| panic!("summary.json missing object field 'modes.scan'"));
+        .unwrap_or_else(|| panic!("summary.json missing object field 'modes.{}'", mode_folder));
 
     for key in [
         "status",
@@ -176,16 +157,19 @@ fn assert_engagement_contract(engagement_dir: &Path, run_label: &str) {
     ] {
         assert!(
             scan.contains_key(key),
-            "Scan '{}' summary contract missing 'modes.scan.{}'",
+            "Scan '{}' summary contract missing 'modes.{}.{}'",
             run_label,
+            mode_folder,
             key
         );
     }
     assert_eq!(
         scan.get("command").and_then(|v| v.as_str()),
-        Some("scan"),
-        "Scan '{}' expected modes.scan.command=scan",
-        run_label
+        Some(expected_command),
+        "Scan '{}' expected modes.{}.command={}",
+        run_label,
+        mode_folder,
+        expected_command
     );
 
     let latest_path = engagement_dir.join("latest.json");
@@ -197,23 +181,23 @@ fn assert_engagement_contract(engagement_dir: &Path, run_label: &str) {
     let summary_run_id = scan
         .get("run_id")
         .and_then(|v| v.as_str())
-        .unwrap_or_else(|| panic!("summary.json modes.scan missing run_id"));
+        .unwrap_or_else(|| panic!("summary.json modes.{} missing run_id", mode_folder));
     assert_eq!(
         latest_run_id, summary_run_id,
         "Scan '{}' run_id mismatch between latest.json and summary.json",
         run_label
     );
 
-    let run_outcome_path = engagement_dir.join("scan/run_outcome.json");
+    let run_outcome_path = engagement_dir.join(mode_folder).join("run_outcome.json");
     let run_outcome = read_json(&run_outcome_path);
     let run_outcome_run_id = run_outcome
         .get("run_id")
         .and_then(|v| v.as_str())
-        .unwrap_or_else(|| panic!("scan/run_outcome.json missing run_id"));
+        .unwrap_or_else(|| panic!("{}/run_outcome.json missing run_id", mode_folder));
     assert_eq!(
         run_outcome_run_id, summary_run_id,
-        "Scan '{}' run_id mismatch between scan/run_outcome.json and summary.json",
-        run_label
+        "Scan '{}' run_id mismatch between {}/run_outcome.json and summary.json",
+        run_label, mode_folder
     );
 }
 
@@ -244,6 +228,7 @@ fn run_scan(bin: &Path, repo_root: &Path, temp_root: &Path, run: ScanRun<'_>) {
     let build_cache_dir = temp_root.join("build_cache");
     let signal_dir = temp_root.join("signals");
     let engagement_dir = temp_root.join(format!("engagement_{}", run.label));
+    let scan_output_root = temp_root.join(format!("scan_output_{}", run.label));
 
     let output = Command::new(bin)
         .current_dir(repo_root)
@@ -269,6 +254,7 @@ fn run_scan(bin: &Path, repo_root: &Path, temp_root: &Path, run: ScanRun<'_>) {
         .env("ZKF_BUILD_CACHE_DIR", &build_cache_dir)
         .env("ZKF_RUN_SIGNAL_DIR", &signal_dir)
         .env("ZKF_ENGAGEMENT_DIR", &engagement_dir)
+        .env("ZKF_SCAN_OUTPUT_ROOT", &scan_output_root)
         .output()
         .unwrap_or_else(|err| panic!("Failed to launch scan '{}': {}", run.label, err));
 
@@ -282,7 +268,12 @@ fn run_scan(bin: &Path, repo_root: &Path, temp_root: &Path, run: ScanRun<'_>) {
         );
     }
 
-    assert_engagement_contract(&engagement_dir, run.label);
+    let (mode_folder, expected_command) = match run.family {
+        "mono" => ("scan", "scan"),
+        "multi" => ("chains", "chains"),
+        other => panic!("Unsupported scan family '{}'", other),
+    };
+    assert_engagement_contract(&engagement_dir, mode_folder, expected_command, run.label);
 }
 
 #[test]
@@ -339,7 +330,7 @@ fn scan_engagement_contract_fixture_passes() {
     )
     .expect("write summary.json");
 
-    assert_engagement_contract(engagement_dir, "fixture");
+    assert_engagement_contract(engagement_dir, "scan", "scan", "fixture");
 }
 
 #[test]

@@ -9,7 +9,6 @@ attacks:
     description: Minimal underconstrained smoke check
     config:
       witness_pairs: 8
-      public_input_count: 1
   - type: soundness
     description: Minimal soundness smoke check
     config:

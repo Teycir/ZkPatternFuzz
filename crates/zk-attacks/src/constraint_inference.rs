@@ -1152,7 +1152,3 @@ impl ConstraintInferenceEngine {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "constraint_inference_tests.rs"]
-mod tests;

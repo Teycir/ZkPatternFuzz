@@ -1,0 +1,28 @@
+f533c13cd324e2c79bfdaca1653c51e366956b2e		branch 'cairo-v2.0.1' of https://github.com/keep-starknet-strange/alexandria
+47cecb52ccc8837c71d6a463997fdf414dd745ec		branch 'cairo-v2.1.0' of https://github.com/keep-starknet-strange/alexandria
+f37d73d8a8248e4d8dc65de3949333e30bda022f		branch 'cairo-v2.2.0' of https://github.com/keep-starknet-strange/alexandria
+ae1d5149ff601a7ac5b39edc867d33ebd83d7f4f		branch 'cairo-v2.3.0-rc0' of https://github.com/keep-starknet-strange/alexandria
+87f7e63d75ae03c58a3d259d89ee76bf900b2874		branch 'lucas/dbg' of https://github.com/keep-starknet-strange/alexandria
+a5d6808b9fe133288982db9ba5abb438050bc3c3		branch 'main' of https://github.com/keep-starknet-strange/alexandria
+bcc4fa417abbc8b067ae6f2d382b127006b5077c		branch 'version-0.2.0' of https://github.com/keep-starknet-strange/alexandria
+e3715428c990665afc495b5428ef08ab9a2089cd		branch 'version-0.3.0' of https://github.com/keep-starknet-strange/alexandria
+a5d6808b9fe133288982db9ba5abb438050bc3c3		https://github.com/keep-starknet-strange/alexandria
+47cecb52ccc8837c71d6a463997fdf414dd745ec	not-for-merge	tag 'cairo-v2.0.1' of https://github.com/keep-starknet-strange/alexandria
+47cecb52ccc8837c71d6a463997fdf414dd745ec	not-for-merge	tag 'cairo-v2.1.0' of https://github.com/keep-starknet-strange/alexandria
+69e1d69240fe96ea59ac58fd6ca87187ea4481fd	not-for-merge	tag 'cairo-v2.2.0' of https://github.com/keep-starknet-strange/alexandria
+632b404890cb5094116691000d006bdd4dd578d1	not-for-merge	tag 'cairo-v2.3.0-rc0' of https://github.com/keep-starknet-strange/alexandria
+e7b69575f92076e96a83a76efa6bed3c32a15f9f	not-for-merge	tag 'cairo-v2.5.4' of https://github.com/keep-starknet-strange/alexandria
+946e6e2f9d390ad9f345882a352c0dd6f02ef3ad	not-for-merge	tag 'cairo-v2.6.0' of https://github.com/keep-starknet-strange/alexandria
+a5d6808b9fe133288982db9ba5abb438050bc3c3	not-for-merge	tag 'v0.10.0' of https://github.com/keep-starknet-strange/alexandria
+bcc4fa417abbc8b067ae6f2d382b127006b5077c	not-for-merge	tag 'v0.2.0' of https://github.com/keep-starknet-strange/alexandria
+e3715428c990665afc495b5428ef08ab9a2089cd	not-for-merge	tag 'v0.3.0' of https://github.com/keep-starknet-strange/alexandria
+ae3d960589a2f0c9af5fbd9236f6f3eb39fea8ed	not-for-merge	tag 'v0.4.0' of https://github.com/keep-starknet-strange/alexandria
+adf6c44f5c0f8a7fdca30ffb8f1cc79207cb4ae8	not-for-merge	tag 'v0.5.0' of https://github.com/keep-starknet-strange/alexandria
+c804e98e6e9dc1677906bd65d44470615e42dabf	not-for-merge	tag 'v0.5.1' of https://github.com/keep-starknet-strange/alexandria
+2fa8b3e12e31f58216b7d890c3d9094da9e6fcff	not-for-merge	tag 'v0.5.2' of https://github.com/keep-starknet-strange/alexandria
+d45439ca26fe890f636c9b06492d075add3fcb29	not-for-merge	tag 'v0.6.0' of https://github.com/keep-starknet-strange/alexandria
+3f5e6476f350bb09e919e2725489c29442f313ca	not-for-merge	tag 'v0.6.1' of https://github.com/keep-starknet-strange/alexandria
+d2f1cf4d1b0cf8f8342878d9286bbbfeb99e5f0c	not-for-merge	tag 'v0.6.2' of https://github.com/keep-starknet-strange/alexandria
+06e3019612cfcbbdb66cbd849840451ede7ee6aa	not-for-merge	tag 'v0.7.0' of https://github.com/keep-starknet-strange/alexandria
+cb290c4d3884aca23d450950e7f302ceebc98d16	not-for-merge	tag 'v0.8.0' of https://github.com/keep-starknet-strange/alexandria
+2b04d3ff2a302b40d092ad68b2920f28792582eb	not-for-merge	tag 'v0.9.0' of https://github.com/keep-starknet-strange/alexandria

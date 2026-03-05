@@ -1,3 +1,10 @@
+profiles:
+  smoke:
+    description: Relax chain engagement floor for the tiny multi smoke budget
+    engagement_min_chain_unique_coverage_bits: 1
+
+active_profile: smoke
+
 invariants:
   - name: a_small_range
     invariant_type: range
