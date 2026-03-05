@@ -1,10 +1,18 @@
-# ZkPatternFuzz
+<div align="center">
+  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=50&pause=1000&color=F74C00&center=true&vCenter=true&width=800&height=120&lines=ZkPatternFuzz;Zero-Knowledge+Security;Fuzzing+Framework" alt="ZkPatternFuzz Logo" />
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](CHANGELOG.md)
-[![License](https://img.shields.io/badge/license-BSL%201.1-green.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org/)
+  <p><b>A modern Rust security-testing framework for zero-knowledge systems.</b></p>
 
-ZkPatternFuzz is a Rust security-testing framework for zero-knowledge systems. It supports two main workflows:
+  [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg?style=for-the-badge)](CHANGELOG.md)
+  [![License](https://img.shields.io/badge/license-BSL%201.1-green.svg?style=for-the-badge)](LICENSE)
+  [![Rust](https://img.shields.io/badge/rust-2021-orange.svg?style=for-the-badge&logo=rust)](https://www.rust-lang.org/)
+</div>
+
+<br/>
+
+## 🎯 Overview
+
+ZkPatternFuzz supports two main workflows:
 
 - `zk-fuzzer`: single-pattern or legacy campaign execution.
 - `zkpatternfuzz`: batch execution across a pattern catalog and target matrix.
