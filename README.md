@@ -1,99 +1,79 @@
-<div align="center">
-  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=50&pause=1000&color=F74C00&center=true&vCenter=true&width=800&height=120&lines=ZkPatternFuzz;Zero-Knowledge+Security;Fuzzing+Framework" alt="ZkPatternFuzz Logo" />
+# ZkPatternFuzz
 
-  <p><b>A modern Rust security-testing framework for zero-knowledge systems.</b></p>
+[![CI](https://github.com/Teycir/ZkPatternFuzz/actions/workflows/ci.yml/badge.svg)](https://github.com/Teycir/ZkPatternFuzz/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-2021-orange.svg?logo=rust)](https://www.rust-lang.org/)
 
-  [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg?style=for-the-badge)](CHANGELOG.md)
-  [![CI](https://github.com/Teycir/ZkPatternFuzz/actions/workflows/ci.yml/badge.svg)](https://github.com/Teycir/ZkPatternFuzz/actions/workflows/ci.yml)
-  [![License](https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge)](LICENSE)
-  [![Rust](https://img.shields.io/badge/rust-2021-orange.svg?style=for-the-badge&logo=rust)](https://www.rust-lang.org/)
-</div>
+ZkPatternFuzz is a Rust-based security testing framework for zero-knowledge systems. It combines single-target fuzzing, batch pattern execution, backend readiness checks, and evidence-oriented reporting for Circom, Cairo, Noir, and Halo2 targets.
 
-<br/>
+## What The Repository Ships
 
-## 🎯 Overview
-
-ZkPatternFuzz supports two main workflows:
-
-- `zk-fuzzer`: single-pattern or legacy campaign execution.
-- `zkpatternfuzz`: batch execution across a pattern catalog and target matrix.
-
-The repository also ships supporting binaries:
-
+- `zk-fuzzer`: single-target scanning, legacy campaign execution, preflight checks, and tool bootstrap helpers.
+- `zkpatternfuzz`: batch execution across a target registry and pattern catalog.
 - `zk0d_benchmark`: repeated benchmark-suite runner.
-- `zkf_checks`: repo hygiene and policy checks.
+- `zkf_checks`: repository hygiene and policy checks.
 
-This README avoids point-in-time maturity percentages. For dated validation snapshots, use [docs/ROADMAP.md](docs/ROADMAP.md) and the artifacts under `artifacts/`.
+The project is built for proof-oriented security work. A finding is only useful if it ends in one of two states:
 
-Attribution and contact: [teycirbensoltane.tn](https://teycirbensoltane.tn) | `teycir@pxdmail.net`
+- deterministic exploit replay with reproducible artifacts, or
+- bounded non-exploitability evidence with clear assumptions.
 
-## Prerequisites
+Operator docs live under [docs/INDEX.md](docs/INDEX.md). Validation artifacts and replay bundles are stored under `artifacts/`.
+
+## Requirements
 
 - Rust toolchain with Cargo
+- Node.js and `npm` for Circom-related fixtures and local JavaScript dependencies
 - Z3 for symbolic execution and solver-backed checks
-- Backend tools as needed for the targets you run: `circom`, `snarkjs`, `nargo`, `scarb`, and/or Halo2 toolchains
+- backend tools as needed for the targets you run: `circom`, `snarkjs`, `nargo`, `scarb`, and/or Halo2 Rust toolchains
 
-Use [docs/TOOLS_AVAILABLE_ON_HOST.md](docs/TOOLS_AVAILABLE_ON_HOST.md) for the verified host inventory in this workspace.
+Use [docs/TOOLS_AVAILABLE_ON_HOST.md](docs/TOOLS_AVAILABLE_ON_HOST.md) for the verified tool inventory in this workspace.
 
-## Build
+## Build And Validation
 
 ```bash
 git clone https://github.com/Teycir/ZkPatternFuzz.git
 cd ZkPatternFuzz
+cp .env.example .env
 npm ci
 cargo build --release --bins
 cargo test
 ```
 
-`npm ci` installs the small JavaScript dependency surface used by local Circom fixtures and benchmark lanes (`circomlib`, `ffjavascript`). `node_modules/` is intentionally ignored and should not be committed.
+`npm ci` installs the small dependency surface used by local Circom fixtures and benchmark lanes. `node_modules/` is intentionally ignored and should not be committed.
 
-Generate local Rust API docs when needed:
+Generate local API docs when needed:
 
 ```bash
 cargo doc --workspace --no-deps
 ```
 
-## Direct-Run Environment
+## Runtime Environment
 
-Create a local `.env` from the tracked template first:
+The tracked `.env.example` is the supported baseline for both wrapper scripts and direct batch runs:
 
 ```bash
 cp .env.example .env
+set -a
+source .env
+set +a
 ```
 
-The template uses repo-relative writable paths. The wrapper scripts normalize them against the repository root. For direct CLI examples below, either keep the `.env` defaults or export explicit overrides once per shell:
-
-```bash
-export ZKF_SCAN_OUTPUT_ROOT="$PWD/artifacts/manual_runs"
-export ZKF_RUN_SIGNAL_DIR="$PWD/artifacts/manual_runs/run_signals"
-export ZKF_BUILD_CACHE_DIR="$PWD/artifacts/manual_runs/build_cache"
-export ZKF_SHARED_BUILD_CACHE_DIR="$PWD/artifacts/manual_runs/build_cache"
-mkdir -p "$ZKF_SCAN_OUTPUT_ROOT" "$ZKF_RUN_SIGNAL_DIR" "$ZKF_BUILD_CACHE_DIR"
-```
-
-For direct `zkpatternfuzz` runs, export the batch-stage timeout variables too:
-
-```bash
-export ZKF_ZKPATTERNFUZZ_DETECTION_STAGE_TIMEOUT_SECS=1800
-export ZKF_ZKPATTERNFUZZ_PROOF_STAGE_TIMEOUT_SECS=3600
-export ZKF_ZKPATTERNFUZZ_STUCK_STEP_WARN_SECS=120
-```
+That loads the writable output roots, build cache paths, and the required `zkpatternfuzz` batch timeout settings. Override values in `.env` only when you need a different local output root or a different standardized target binding.
 
 ## Quick Start
 
-Generate a sample pattern-only YAML file:
+Generate a pattern template:
 
 ```bash
 target/release/zk-fuzzer init --output /tmp/zkf_sample.yaml --framework circom
 ```
 
-`init` creates a pattern template, not a fully bound campaign. Edit its selectors and inputs before using it on a real target.
-
-Validate a real scan in dry-run mode with a known matching local target:
+Validate a real scan in dry-run mode against the local Cairo readiness target:
 
 ```bash
 target/release/zk-fuzzer scan \
-  campaigns/cve/patterns/cveX34_cairo_multiplier_assert_readiness_probe.yaml \
+  tests/patterns/scan_smoke_mono.yaml \
   --target-circuit tests/cairo_programs/multiplier.cairo \
   --main-component main \
   --framework cairo \
@@ -103,17 +83,21 @@ target/release/zk-fuzzer scan \
   --dry-run
 ```
 
-Remove `--dry-run` to execute the scan.
-
-Run a legacy campaign preflight:
+Run a backend preflight for a legacy campaign:
 
 ```bash
 target/release/zk-fuzzer preflight campaigns/examples/defi_audit.yaml --setup-keys
 ```
 
-## Standardized Daily Runs
+List the bundled CVE patterns:
 
-For smoke, standard, and deep routine runs, use the fixed wrappers instead of rebuilding long batch commands:
+```bash
+target/release/zk-fuzzer --list-patterns
+```
+
+## Standardized Routine Runs
+
+For daily `smoke`, `standard`, and `deep` runs, use the fixed wrappers instead of rebuilding long CLI invocations:
 
 ```bash
 scripts/run_std_smoke.sh
@@ -122,27 +106,17 @@ scripts/run_std_deep.sh
 scripts/monitor_std_run.sh
 ```
 
-The wrapper target bindings live in `.env`:
+The target bindings for those wrappers are the three `.env` keys below:
 
 - `ZKF_STD_TARGET_SMOKE`
 - `ZKF_STD_TARGET_STANDARD`
 - `ZKF_STD_TARGET_DEEP`
 
-See [docs/STANDARDIZED_RUN_PROFILES.md](docs/STANDARDIZED_RUN_PROFILES.md) for the operating rules.
-
-## Validation
-
-CI status is published through the `CI` workflow badge above. The workflow currently runs formatting, policy gates, `cargo test --all-features`, real backend integration tests, benchmark smoke lanes, and a Codecov upload from `cargo llvm-cov`.
-
-For a local coverage artifact:
-
-```bash
-cargo llvm-cov --all-features --lcov --output-path lcov.info
-```
+The operational contract for these profiles is documented in [docs/STANDARDIZED_RUN_PROFILES.md](docs/STANDARDIZED_RUN_PROFILES.md).
 
 ## Direct Batch Runs
 
-List the current catalog:
+After sourcing `.env`, you can inspect the catalog:
 
 ```bash
 target/release/zkpatternfuzz \
@@ -153,7 +127,7 @@ target/release/zkpatternfuzz \
   --list-catalog
 ```
 
-Run a verified dry-run batch against the local Cairo readiness target:
+Run a dry-run batch against the local Cairo readiness target:
 
 ```bash
 target/release/zkpatternfuzz \
@@ -170,7 +144,7 @@ target/release/zkpatternfuzz \
   --emit-reason-tsv
 ```
 
-`zkpatternfuzz` writes timestamped bundles under `ZKF_SCAN_OUTPUT_ROOT/ResultJsonTimestamped/` and per-template artifacts under `.scan_run_artifacts/`.
+Batch runs write timestamped bundles under `ZKF_SCAN_OUTPUT_ROOT/ResultJsonTimestamped/` and per-template artifacts under `.scan_run_artifacts/`.
 
 ## Local Circom Bootstrap
 
@@ -186,7 +160,7 @@ This stages:
 - `snarkjs` from `PATH`
 - `pot12_final.ptau` from the local test fixture
 
-## Benchmarks And Release Utilities
+## Benchmarks And Repo Checks
 
 Benchmark runner:
 
@@ -204,7 +178,13 @@ scripts/release_candidate_gate.sh --help
 Repo policy checks:
 
 ```bash
-cargo run --release --bin zkf_checks -- --help
+target/release/zkf_checks --help
+```
+
+For a local coverage artifact:
+
+```bash
+cargo llvm-cov --all-features --lcov --output-path lcov.info
 ```
 
 ## Repository Layout
@@ -216,8 +196,8 @@ ZkPatternFuzz/
 ├── campaigns/                 # YAML patterns and campaign configs
 ├── scripts/                   # Operational wrappers and release/readiness utilities
 ├── targets/                   # Registries, matrices, benchmark suites
-├── tests/                     # Integration tests and local fixture targets
-├── artifacts/                 # Generated reports and validation evidence
+├── tests/                     # Integration tests and portable local fixtures
+├── artifacts/                 # Generated reports, validation evidence, and run outputs
 ├── docs/                      # Operator docs and technical reference
 └── bins/                      # Internalized local tooling assets
 ```
@@ -238,18 +218,19 @@ Operational references:
 - [docs/TOOLS_AVAILABLE_ON_HOST.md](docs/TOOLS_AVAILABLE_ON_HOST.md)
 - [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)
 
-The architecture and roadmap files are still useful, but they contain dated snapshots. Read them with the stated dates in mind:
+Historical context:
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/ROADMAP.md](docs/ROADMAP.md)
-- [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
-- [docs/AGENTS.md](docs/AGENTS.md)
+- [ARCHITECTURE.md](ARCHITECTURE.md)
+- [ROADMAP.md](ROADMAP.md)
+
+## Attribution
+
+Project home: [teycirbensoltane.tn](https://teycirbensoltane.tn)
+Contact: `teycir@pxdmail.net`
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
-Attribution and contact: [teycirbensoltane.tn](https://teycirbensoltane.tn) | `teycir@pxdmail.net`
 
 ## Citation
 
