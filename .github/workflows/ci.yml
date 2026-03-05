@@ -131,6 +131,14 @@ jobs:
     needs: check
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify Node.js availability (pre-provisioned)
+        run: |
+          node --version || exit 1
+          npm --version || exit 1
+
+      - name: Install JavaScript dependencies
+        run: npm ci
       
       - name: Verify Rust toolchain availability (pre-provisioned)
         run: |
@@ -187,6 +195,9 @@ jobs:
         run: |
           node --version || exit 1
           npm --version || exit 1
+
+      - name: Install JavaScript dependencies
+        run: npm ci
 
       - name: Verify Rust installation
         run: |
@@ -281,6 +292,9 @@ jobs:
         run: |
           node --version || exit 1
           npm --version || exit 1
+
+      - name: Install JavaScript dependencies
+        run: npm ci
 
       - name: Verify Rust installation
         run: |
@@ -390,6 +404,14 @@ jobs:
     needs: test
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify Node.js availability (pre-provisioned)
+        run: |
+          node --version || exit 1
+          npm --version || exit 1
+
+      - name: Install JavaScript dependencies
+        run: npm ci
       
       - name: Verify Rust toolchain availability (pre-provisioned)
         run: |
@@ -431,6 +453,14 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify Node.js availability (pre-provisioned)
+        run: |
+          node --version || exit 1
+          npm --version || exit 1
+
+      - name: Install JavaScript dependencies
+        run: npm ci
       
       - name: Verify Rust toolchain availability (pre-provisioned)
         run: |
@@ -468,6 +498,14 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify Node.js availability (pre-provisioned)
+        run: |
+          node --version || exit 1
+          npm --version || exit 1
+
+      - name: Install JavaScript dependencies
+        run: npm ci
       
       - name: Verify Rust toolchain availability (pre-provisioned)
         run: |

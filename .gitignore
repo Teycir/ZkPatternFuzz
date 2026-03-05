@@ -11,6 +11,12 @@ Cargo.lock
 *.swo
 *~
 
+# Local environment
+.env
+.env.local
+.env.*
+!.env.example
+
 # OS
 .DS_Store
 .DS_Store?

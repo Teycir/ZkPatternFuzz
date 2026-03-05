@@ -2,6 +2,13 @@
 
 Production troubleshooting guide for common ZkPatternFuzz failures.
 
+Start local operator setup from the tracked template:
+
+```bash
+cp .env.example .env
+npm ci
+```
+
 ## 1. Fast Triage
 
 Direct runs need writable output roots. For local repros, start with:
@@ -38,8 +45,9 @@ If a run fails, inspect `run_outcome.json` first.
 ### Actions
 
 1. Override output paths to a writable directory under the repo or `/tmp`.
-2. For direct `zkpatternfuzz` runs, export the three `ZKF_ZKPATTERNFUZZ_*` stage-timeout vars.
-3. Create the directories before rerunning.
+2. If you rely on `.env`, keep those keys in your local `.env` by copying from `.env.example`.
+3. For direct `zkpatternfuzz` runs, export the three `ZKF_ZKPATTERNFUZZ_*` stage-timeout vars when overriding the template values ad hoc.
+4. Create the directories before rerunning.
 
 ## 3. Key Generation Failed
 
@@ -85,14 +93,20 @@ target/release/zk-fuzzer preflight campaigns/examples/defi_audit.yaml --setup-ke
 
 ### Actions
 
-1. Export deterministic include roots:
+1. Install the local JS dependencies if `node_modules/circomlib` is missing:
+
+```bash
+npm ci
+```
+
+2. Export deterministic include roots:
 
 ```bash
 export CIRCOM_INCLUDE_PATHS="third_party:node_modules"
 ```
 
-2. Verify the referenced files exist under those roots.
-3. Rerun the failing command.
+3. Verify the referenced files exist under those roots.
+4. Rerun the failing command.
 
 ## 5. Selector Mismatch
 

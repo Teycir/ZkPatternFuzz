@@ -4,7 +4,15 @@ This repository defines 3 fixed run profiles to prevent command drift.
 
 ## Source Of Truth
 
-Target bindings are defined in `.env`:
+Target bindings are defined in `.env`. Start from the tracked template:
+
+```bash
+cp .env.example .env
+```
+
+The default template uses repo-relative output paths, and the wrapper scripts resolve them against the repository root.
+
+Routine target bindings are:
 
 - `ZKF_STD_TARGET_SMOKE`
 - `ZKF_STD_TARGET_STANDARD`
@@ -60,3 +68,4 @@ scripts/monitor_std_run.sh
 - Do not pass flags/overrides to wrappers.
 - Change only the 3 target bindings in `.env`.
 - Do not override selector profile manually; it is framework-bound by the fixed runner.
+- Do not commit `.env`; keep local operator settings in your untracked copy.

@@ -3,6 +3,15 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+resolve_repo_path() {
+  local raw_path="$1"
+  if [[ "$raw_path" = /* ]]; then
+    printf '%s\n' "$raw_path"
+  else
+    printf '%s\n' "$ROOT_DIR/$raw_path"
+  fi
+}
+
 MATRIX_PATH="$ROOT_DIR/targets/zk0d_matrix_external_manual.yaml"
 REGISTRY_PATH="$ROOT_DIR/targets/fuzzer_registry.prod.yaml"
 ZKEVM_TEMPLATE_CSV="cveX15_scroll_missing_overflow_constraint.yaml,cveX16_scroll_missing_constraint.yaml,cveX35_halo2_signature_readiness_probe.yaml,cveX36_halo2_constraint_metadata_readiness_probe.yaml,cveX37_halo2_plonk_lookup_readiness_probe.yaml,cveX38_halo2_profile_k_readiness_probe.yaml,cveX39_scroll_modgadget_underconstrained_mulmod.yaml,cveX40_scroll_create_static_context_escape.yaml,cveX41_scroll_rlpu64_lt128_underconstrained.yaml"
@@ -85,13 +94,19 @@ if (( EFFECTIVE_PROOF_TIMEOUT_SECS > TIMEOUT_SECS )); then
   EFFECTIVE_PROOF_TIMEOUT_SECS="$TIMEOUT_SECS"
 fi
 
-TARGET_OUTPUT_ROOT="$ZKF_SCAN_OUTPUT_ROOT"
+TARGET_OUTPUT_ROOT="$(resolve_repo_path "$ZKF_SCAN_OUTPUT_ROOT")"
 TARGET_LOG_DIR="$TARGET_OUTPUT_ROOT/logs"
-RUN_SIGNAL_DIR="$ZKF_RUN_SIGNAL_DIR"
-BUILD_CACHE_DIR="$ZKF_BUILD_CACHE_DIR"
+RUN_SIGNAL_DIR="$(resolve_repo_path "$ZKF_RUN_SIGNAL_DIR")"
+BUILD_CACHE_DIR="$(resolve_repo_path "$ZKF_BUILD_CACHE_DIR")"
+SHARED_BUILD_CACHE_DIR="$(resolve_repo_path "$ZKF_SHARED_BUILD_CACHE_DIR")"
 CARGO_TARGET_DIR_FIXED="$TARGET_OUTPUT_ROOT/cargo_target"
 
-mkdir -p "$TARGET_LOG_DIR" "$RUN_SIGNAL_DIR" "$BUILD_CACHE_DIR" "$CARGO_TARGET_DIR_FIXED"
+mkdir -p \
+  "$TARGET_LOG_DIR" \
+  "$RUN_SIGNAL_DIR" \
+  "$BUILD_CACHE_DIR" \
+  "$SHARED_BUILD_CACHE_DIR" \
+  "$CARGO_TARGET_DIR_FIXED"
 
 TIMESTAMP="$(date -u +"%Y%m%d_%H%M%S")"
 RUN_LOG="$TARGET_LOG_DIR/run_${TIMESTAMP}.log"
@@ -251,6 +266,9 @@ echo "timeout_secs:     $TIMEOUT_SECS"
 echo "detection_timeout:$EFFECTIVE_DETECTION_TIMEOUT_SECS"
 echo "proof_timeout:    $EFFECTIVE_PROOF_TIMEOUT_SECS"
 echo "output_root:      $TARGET_OUTPUT_ROOT"
+echo "signal_dir:       $RUN_SIGNAL_DIR"
+echo "build_cache:      $BUILD_CACHE_DIR"
+echo "shared_cache:     $SHARED_BUILD_CACHE_DIR"
 echo "run_log:          $RUN_LOG"
 echo "[STEP] target_resolved"
 echo "[STEP] selector_profile_resolved profile=$SELECTOR_PROFILE"
@@ -270,7 +288,7 @@ echo "[STEP] execute_fuzz"
   ZKF_SCAN_OUTPUT_ROOT="$TARGET_OUTPUT_ROOT" \
   ZKF_RUN_SIGNAL_DIR="$RUN_SIGNAL_DIR" \
   ZKF_BUILD_CACHE_DIR="$BUILD_CACHE_DIR" \
-  ZKF_SHARED_BUILD_CACHE_DIR="$ZKF_SHARED_BUILD_CACHE_DIR" \
+  ZKF_SHARED_BUILD_CACHE_DIR="$SHARED_BUILD_CACHE_DIR" \
   ZK_FUZZER_HALO2_USE_HOST_CARGO_HOME="$HALO2_USE_HOST_CARGO_HOME_VALUE" \
   ZKFUZZ_HALO2_STRICT_READINESS="$HALO2_STRICT_READINESS_VALUE" \
   "${CMD[@]}" 2>&1 | tee "$RUN_LOG"

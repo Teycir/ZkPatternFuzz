@@ -138,7 +138,7 @@ scripts/run_std_deep.sh
 scripts/monitor_std_run.sh
 ```
 
-The target bindings for those wrappers live in `.env`:
+The target bindings for those wrappers live in `.env`. Start from `cp .env.example .env`, then edit:
 
 - `ZKF_STD_TARGET_SMOKE`
 - `ZKF_STD_TARGET_STANDARD`

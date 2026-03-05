@@ -3,6 +3,15 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+resolve_repo_path() {
+  local raw_path="$1"
+  if [[ "$raw_path" = /* ]]; then
+    printf '%s\n' "$raw_path"
+  else
+    printf '%s\n' "$ROOT_DIR/$raw_path"
+  fi
+}
+
 if [[ -f "$ROOT_DIR/.env" ]]; then
   # shellcheck disable=SC1091
   set -a
@@ -16,8 +25,8 @@ TAIL_LINES=25
 : "${ZKF_SCAN_OUTPUT_ROOT:?ZKF_SCAN_OUTPUT_ROOT must be set in .env}"
 : "${ZKF_RUN_SIGNAL_DIR:?ZKF_RUN_SIGNAL_DIR must be set in .env}"
 
-RUN_ROOT="$ZKF_SCAN_OUTPUT_ROOT"
-RUN_SIGNAL_DIR="$ZKF_RUN_SIGNAL_DIR"
+RUN_ROOT="$(resolve_repo_path "$ZKF_SCAN_OUTPUT_ROOT")"
+RUN_SIGNAL_DIR="$(resolve_repo_path "$ZKF_RUN_SIGNAL_DIR")"
 SESSION_LOG="$RUN_SIGNAL_DIR/session.log"
 LATEST_JSON="$RUN_SIGNAL_DIR/latest.json"
 

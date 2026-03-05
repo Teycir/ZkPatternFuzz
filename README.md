@@ -4,6 +4,7 @@
   <p><b>A modern Rust security-testing framework for zero-knowledge systems.</b></p>
 
   [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg?style=for-the-badge)](CHANGELOG.md)
+  [![CI](https://github.com/Teycir/ZkPatternFuzz/actions/workflows/ci.yml/badge.svg)](https://github.com/Teycir/ZkPatternFuzz/actions/workflows/ci.yml)
   [![License](https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge)](LICENSE)
   [![Rust](https://img.shields.io/badge/rust-2021-orange.svg?style=for-the-badge&logo=rust)](https://www.rust-lang.org/)
 </div>
@@ -39,13 +40,28 @@ Use [docs/TOOLS_AVAILABLE_ON_HOST.md](docs/TOOLS_AVAILABLE_ON_HOST.md) for the v
 ```bash
 git clone https://github.com/Teycir/ZkPatternFuzz.git
 cd ZkPatternFuzz
+npm ci
 cargo build --release --bins
 cargo test
 ```
 
+`npm ci` installs the small JavaScript dependency surface used by local Circom fixtures and benchmark lanes (`circomlib`, `ffjavascript`). `node_modules/` is intentionally ignored and should not be committed.
+
+Generate local Rust API docs when needed:
+
+```bash
+cargo doc --workspace --no-deps
+```
+
 ## Direct-Run Environment
 
-The direct CLI examples below assume writable output paths inside the repository. Export these once per shell:
+Create a local `.env` from the tracked template first:
+
+```bash
+cp .env.example .env
+```
+
+The template uses repo-relative writable paths. The wrapper scripts normalize them against the repository root. For direct CLI examples below, either keep the `.env` defaults or export explicit overrides once per shell:
 
 ```bash
 export ZKF_SCAN_OUTPUT_ROOT="$PWD/artifacts/manual_runs"
@@ -113,6 +129,16 @@ The wrapper target bindings live in `.env`:
 - `ZKF_STD_TARGET_DEEP`
 
 See [docs/STANDARDIZED_RUN_PROFILES.md](docs/STANDARDIZED_RUN_PROFILES.md) for the operating rules.
+
+## Validation
+
+CI status is published through the `CI` workflow badge above. The workflow currently runs formatting, policy gates, `cargo test --all-features`, real backend integration tests, benchmark smoke lanes, and a Codecov upload from `cargo llvm-cov`.
+
+For a local coverage artifact:
+
+```bash
+cargo llvm-cov --all-features --lcov --output-path lcov.info
+```
 
 ## Direct Batch Runs
 
