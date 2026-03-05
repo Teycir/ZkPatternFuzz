@@ -1,12 +1,35 @@
-# ZkPatternFuzz
+<div align="center">
+  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=50&pause=1000&color=F74C00&center=true&vCenter=true&width=800&height=120&lines=ZkPatternFuzz;Zero-Knowledge+Security;Fuzzing+Framework" alt="ZkPatternFuzz animated title" />
 
-[![CI](https://github.com/Teycir/ZkPatternFuzz/actions/workflows/ci.yml/badge.svg)](https://github.com/Teycir/ZkPatternFuzz/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-2021-orange.svg?logo=rust)](https://www.rust-lang.org/)
+  <p><b>Rust-based security testing for zero-knowledge systems.</b></p>
+
+  <p>
+    <a href="https://github.com/Teycir/ZkPatternFuzz/actions/workflows/ci.yml"><img src="https://github.com/Teycir/ZkPatternFuzz/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" /></a>
+    <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-2021-orange.svg?logo=rust" alt="Rust 2021" /></a>
+  </p>
+</div>
 
 ZkPatternFuzz is a Rust-based security testing framework for zero-knowledge systems. It combines single-target fuzzing, batch pattern execution, backend readiness checks, and evidence-oriented reporting for Circom, Cairo, Noir, and Halo2 targets.
 
-## What The Repository Ships
+## Index
+
+- [Overview](#overview)
+- [Use Cases](#use-cases)
+- [Comparison With Related Tools](#comparison-with-related-tools)
+- [Requirements](#requirements)
+- [Build And Validation](#build-and-validation)
+- [Runtime Environment](#runtime-environment)
+- [Quick Start](#quick-start)
+- [Standardized Routine Runs](#standardized-routine-runs)
+- [Direct Batch Runs](#direct-batch-runs)
+- [Local Circom Bootstrap](#local-circom-bootstrap)
+- [Benchmarks And Repo Checks](#benchmarks-and-repo-checks)
+- [Repository Layout](#repository-layout)
+- [Documentation](#documentation)
+- [License](#license)
+
+## Overview
 
 - `zk-fuzzer`: single-target scanning, legacy campaign execution, preflight checks, and tool bootstrap helpers.
 - `zkpatternfuzz`: batch execution across a target registry and pattern catalog.
@@ -19,6 +42,28 @@ The project is built for proof-oriented security work. A finding is only useful 
 - bounded non-exploitability evidence with clear assumptions.
 
 Operator docs live under [docs/INDEX.md](docs/INDEX.md). Validation artifacts and replay bundles are stored under `artifacts/`.
+
+## Use Cases
+
+- Audit a single Circom, Cairo, Noir, or Halo2 target with one reproducible scan command.
+- Run standardized `smoke`, `standard`, and `deep` campaigns against a fixed target registry without rebuilding long CLI invocations.
+- Regress known CVE-style patterns against portable in-repo fixtures before touching heavier external targets.
+- Generate replayable findings and proof-status artifacts instead of stopping at hint-only detections.
+- Preflight backend readiness, key setup, and local tooling before spending time on long fuzzing campaigns.
+- Track batch outcomes across aliases, catalogs, and timestamped artifact bundles during repeated security work.
+
+## Comparison With Related Tools
+
+These tools are complementary in practice. ZkPatternFuzz is aimed at ZK circuit security workflows, while the others are strongest in EVM fuzzing, symbolic testing, or static analysis.
+
+| Tool | Primary scope | Core method | ZK circuit focus | Orchestration model | Best fit |
+| --- | --- | --- | --- | --- | --- |
+| `ZkPatternFuzz` | ZK circuits and ZK-system targets | Pattern-guided fuzzing, backend readiness checks, replay/evidence workflow | Native support for Circom, Cairo, Noir, and Halo2 targets | Built-in single-target scans plus registry/catalog batch runs | ZK audits, regression lanes, and proof-oriented triage |
+| `Echidna` | Solidity / EVM contracts | Property-based fuzzing with optional coverage guidance and shrinking | No, EVM-centric | Per-project fuzz campaigns driven by invariants and config | Solidity invariant testing |
+| `Medusa` | Solidity / EVM contracts | Parallel, coverage-guided mutational fuzzing | No, EVM-centric | Worker-based fuzz campaigns with corpus growth | Larger EVM fuzz workloads |
+| `Halmos` | Solidity / Foundry EVM tests | Symbolic testing | No, EVM-centric | Test-driven symbolic runs | Solver-backed exploration of EVM properties |
+| `Foundry / Forge` | Solidity development and testing | Unit, fuzz, and invariant testing | EVM-centric | Developer test runner inside Solidity repos | Fast app-dev feedback loops and contract test suites |
+| `Slither` | Solidity and Vyper review | Static analysis | No | Static CI / audit pass, not runtime fuzzing | Fast detector-based triage and code comprehension |
 
 ## Requirements
 
