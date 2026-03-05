@@ -2,7 +2,7 @@
 name = "zk-attacks"
 version = "0.1.0"
 edition = "2021"
-license = "BUSL-1.1"
+license = "MIT"
 description = "Attack implementations for ZK circuits"
 
 [dependencies]

@@ -3,7 +3,10 @@ name = "zk-fuzzer"
 version = "0.1.0"
 edition = "2021"
 description = "Zero-Knowledge Proof Security Testing Framework"
-license = "BUSL-1.1"
+license = "MIT"
+authors = ["Teycir Ben Soltane <teycir@pxdmail.net>"]
+homepage = "https://teycirbensoltane.tn"
+repository = "https://github.com/Teycir/ZkPatternFuzz"
 
 [workspace]
 members = [

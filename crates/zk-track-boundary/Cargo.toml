@@ -2,7 +2,7 @@
 name = "zk-track-boundary"
 version = "0.1.0"
 edition = "2021"
-license = "BUSL-1.1"
+license = "MIT"
 description = "Deferred boundary track runner (public input/serialization/verifier boundary testing)"
 
 [dependencies]

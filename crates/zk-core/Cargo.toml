@@ -3,7 +3,7 @@ name = "zk-core"
 version = "0.1.0"
 edition = "2021"
 description = "Core types and traits for ZkPatternFuzz"
-license = "BUSL-1.1"
+license = "MIT"
 
 [dependencies]
 anyhow = "1.0"

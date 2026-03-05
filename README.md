@@ -4,7 +4,7 @@
   <p><b>A modern Rust security-testing framework for zero-knowledge systems.</b></p>
 
   [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg?style=for-the-badge)](CHANGELOG.md)
-  [![License](https://img.shields.io/badge/license-BSL%201.1-green.svg?style=for-the-badge)](LICENSE)
+  [![License](https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge)](LICENSE)
   [![Rust](https://img.shields.io/badge/rust-2021-orange.svg?style=for-the-badge&logo=rust)](https://www.rust-lang.org/)
 </div>
 
@@ -23,6 +23,8 @@ The repository also ships supporting binaries:
 - `zkf_checks`: repo hygiene and policy checks.
 
 This README avoids point-in-time maturity percentages. For dated validation snapshots, use [ROADMAP.md](ROADMAP.md) and the artifacts under `artifacts/`.
+
+Attribution and contact: [teycirbensoltane.tn](https://teycirbensoltane.tn) | `teycir@pxdmail.net`
 
 ## Prerequisites
 
@@ -217,9 +219,9 @@ The architecture and roadmap files are still useful, but they contain dated snap
 
 ## License
 
-Business Source License 1.1. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
 
-Converts to Apache License 2.0 on 2028-02-04.
+Attribution and contact: [teycirbensoltane.tn](https://teycirbensoltane.tn) | `teycir@pxdmail.net`
 
 ## Citation
 
