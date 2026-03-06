@@ -13,6 +13,12 @@ collections:
     templates:
       - underconstrained_strict_probe_prod.yaml
 
+  benchmark_merkle_specific_prod:
+    registry: local_benchmark_patterns_prod
+    description: "Production-depth Merkle-specific benchmark template set"
+    templates:
+      - merkle_path_binarity_probe_prod.yaml
+
 aliases:
   benchmark: ["benchmark_prod"]
   benchmark_prod: ["benchmark_prod"]

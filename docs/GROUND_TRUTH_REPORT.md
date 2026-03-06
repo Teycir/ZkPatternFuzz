@@ -96,9 +96,11 @@ Working conclusion:
 - primary suspicion: benchmark-pattern gap plus insufficient search depth
 - secondary suspicion: Merkle oracle coverage is too indirect for this bug class in generic benchmark mode
 
-Recommended next step:
+Follow-up status:
 
-- add a Merkle-specific benchmark invariant for path-index binarity and rerun this target at production-depth settings before treating it as a structural recall ceiling
+- benchmark suite routing now assigns `merkle_unconstrained` to `campaigns/benchmark/patterns/merkle_path_binarity_probe.yaml` in default/dev runs and `merkle_path_binarity_probe_prod.yaml` in prod-depth runs
+- the published metrics at the top of this report predate that routing change and should be treated as a pre-fix baseline for this target
+- the next required measurement is a rerun at production-depth settings so this diagnosis can move from configuration hypothesis to measured outcome
 
 ## Source Artifacts
 

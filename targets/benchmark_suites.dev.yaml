@@ -7,7 +7,7 @@ suites:
         target_circuit: tests/ground_truth_circuits/merkle_unconstrained.circom
         main_component: main
         framework: circom
-        alias: benchmark
+        template: merkle_path_binarity_probe.yaml
       - name: nullifier_collision
         target_circuit: tests/ground_truth_circuits/nullifier_collision.circom
         main_component: main

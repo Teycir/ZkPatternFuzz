@@ -13,6 +13,12 @@ collections:
     templates:
       - underconstrained_strict_probe.yaml
 
+  benchmark_merkle_specific:
+    registry: local_benchmark_patterns
+    description: "Merkle-specific benchmark template set"
+    templates:
+      - merkle_path_binarity_probe.yaml
+
 aliases:
   benchmark: ["benchmark_generic"]
   benchmark_generic: ["benchmark_generic"]

@@ -1,0 +1,75 @@
+invariants:
+  - name: merkle_path_indices_binary
+    invariant_type: constraint
+    relation: "forall i in path_indices: path_indices[i] in {0,1}"
+    oracle: must_hold
+    severity: critical
+    description: "Merkle path selectors must stay binary to preserve proof semantics"
+
+attacks:
+  - type: underconstrained
+    description: "Primary underconstraint discovery sweep"
+    config:
+      witness_pairs: 128
+
+  - type: soundness
+    description: "Proof/verification soundness checks required by strict readiness"
+    config:
+      forge_attempts: 4
+      mutation_rate: 0.10
+
+  - type: constraint_inference
+    description: "Infer likely missing semantic constraints"
+    config:
+      confidence_threshold: 0.60
+      confirm_violations: true
+
+  - type: metamorphic
+    description: "Transform-based semantic consistency checks"
+    config:
+      num_tests: 16
+
+  - type: constraint_slice
+    description: "Cone-based dependency slice probing"
+    config:
+      samples_per_cone: 4
+      base_witness_attempts: 4
+
+  - type: spec_inference
+    description: "Infer IO-level rules and probe violations"
+    config:
+      sample_count: 32
+
+  - type: witness_collision
+    description: "Search for distinct witnesses mapping to equivalent public behavior"
+    config:
+      samples: 32
+      scope_public_inputs: true
+
+  - type: boundary
+    description: "Boundary-value probing with non-binary selector values"
+    config:
+      test_values: ["0", "1", "2", "3", "p-1"]
+
+inputs:
+  - name: leaf
+    type: field
+    fuzz_strategy: random
+    interesting: ["0", "1", "2", "3"]
+
+  - name: root
+    type: field
+    fuzz_strategy: random
+    interesting: ["0", "1", "p-1"]
+
+  - name: path_elements
+    type: array<field>
+    fuzz_strategy: random
+    interesting: ["0", "1", "2", "3"]
+    length: 3
+
+  - name: path_indices
+    type: array<field>
+    fuzz_strategy: random
+    interesting: ["0", "1", "2", "3", "p-1"]
+    length: 3
