@@ -85,6 +85,7 @@ build/zk0d/semaphore/pot14_0000.ptau
 targets/zkbugs
 targets/zkbugs/
 node_modules/
+package-lock.json
 /bin/
 bins/
 **/.z3-trace
