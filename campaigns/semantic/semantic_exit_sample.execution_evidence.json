@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {
+      "id": "semantic-case-1",
+      "accepted": true,
+      "violates_intent": true,
+      "summary": "non-admin withdrawal accepted after bypassing authorization checks"
+    },
+    {
+      "id": "semantic-case-2",
+      "accepted": true,
+      "violates_intent": true,
+      "summary": "forged proof accepted despite verifier requirement to reject invalid proofs"
+    },
+    {
+      "id": "semantic-case-3",
+      "accepted": true,
+      "violates_intent": true,
+      "summary": "replay proof accepted without nullifier uniqueness enforcement"
+    }
+  ]
+}

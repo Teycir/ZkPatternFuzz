@@ -66,22 +66,25 @@ This index focuses on the maintained operator-facing docs. Some top-level files 
 18. [SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md](SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md)
     Reproducible semantic-analysis runbook.
 
-19. [PLUGIN_API.md](PLUGIN_API.md)
+19. [../campaigns/semantic/README.md](../campaigns/semantic/README.md)
+    Checked-in semantic campaign entrypoint with the wrapper and execution-evidence payload.
+
+20. [PLUGIN_API.md](PLUGIN_API.md)
     Minimal external plugin contract with the required symbol and campaign wiring.
 
-20. [PLUGIN_SYSTEM_GUIDE.md](PLUGIN_SYSTEM_GUIDE.md)
+21. [PLUGIN_SYSTEM_GUIDE.md](PLUGIN_SYSTEM_GUIDE.md)
     Plugin loading and safety model.
 
-21. [SECURITY_THREAT_MODEL.md](SECURITY_THREAT_MODEL.md)
+22. [SECURITY_THREAT_MODEL.md](SECURITY_THREAT_MODEL.md)
     Security boundaries and assumptions.
 
-22. [../CVErefs/README.md](../CVErefs/README.md)
+23. [../CVErefs/README.md](../CVErefs/README.md)
     Operator-facing index of the curated CVE-style regression catalog and fixture mapping.
 
-23. [VALIDATION_EVIDENCE.md](VALIDATION_EVIDENCE.md)
+24. [VALIDATION_EVIDENCE.md](VALIDATION_EVIDENCE.md)
     Published real-target evidence case study with deterministic replay and Picus follow-up.
 
-24. [GROUND_TRUTH_REPORT.md](GROUND_TRUTH_REPORT.md)
+25. [GROUND_TRUTH_REPORT.md](GROUND_TRUTH_REPORT.md)
     Published benchmarked ground-truth recall, precision, and false-positive figures.
 
 ## Historical Context

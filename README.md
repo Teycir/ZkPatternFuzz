@@ -18,6 +18,7 @@ ZkPatternFuzz is a Rust-based security testing framework for zero-knowledge syst
 - [Use Cases](#use-cases)
 - [Comparison With Related Tools](#comparison-with-related-tools)
 - [Mode 2 Evidence Campaigns](#mode-2-evidence-campaigns)
+- [Semantic Analysis Lane](#semantic-analysis-lane)
 - [Requirements](#requirements)
 - [Build And Validation](#build-and-validation)
 - [Runtime Environment](#runtime-environment)
@@ -93,6 +94,19 @@ Current Mode 2 bundles include:
 - `soundness_forge_deep.yaml`: deeper proof-forgery and verification-soundness pressure
 
 Use Mode 2 when you want stronger single-circuit evidence and broader attack coverage than the standard benchmark templates, but you do not yet need multi-step protocol chains. For chain-focused work, step up to Mode 3 and the workflow in [docs/CHAIN_FUZZING_GUIDE.md](docs/CHAIN_FUZZING_GUIDE.md).
+
+## Semantic Analysis Lane
+
+The semantic lane is wired into the repository as a checked-in campaign flow rather than a crate example only:
+
+- wrapper: `scripts/run_semantic_exit_sample.sh`
+- checked-in execution evidence: `campaigns/semantic/semantic_exit_sample.execution_evidence.json`
+- runner: `cargo run -p zk-track-semantic --example semantic_exit_campaign -- ...`
+- aggregate report: `artifacts/semantic_exit/latest_report.json`
+
+Use this path when the security question is about intended behavior versus accepted behavior, not just constraint-level attack findings. That is the lane for "the circuit compiles, witnesses satisfy constraints, but the accepted behavior still violates the documented security model."
+
+The operator workflow and manual-label precision loop are documented in [docs/SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md](docs/SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md) and [campaigns/semantic/README.md](campaigns/semantic/README.md).
 
 ## Requirements
 
@@ -323,6 +337,7 @@ Validation references:
 - [docs/VALIDATION_EVIDENCE.md](docs/VALIDATION_EVIDENCE.md)
 - [docs/GROUND_TRUTH_REPORT.md](docs/GROUND_TRUTH_REPORT.md)
 - [CVErefs/README.md](CVErefs/README.md)
+- [campaigns/semantic/README.md](campaigns/semantic/README.md)
 
 Historical context:
 

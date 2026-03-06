@@ -80,11 +80,17 @@ If any step fails, block semantic signoff and fix before release-candidate promo
 
 ## 5) Post-Roadmap Semantic Exit Sample (Deferred Lane)
 
-The semantic intent track is currently deferred from release gating, but you can run the producer-only sample campaign to refresh exit metrics:
+The semantic intent track is currently deferred from release gating, but the repository now includes a checked-in wrapper and execution-evidence payload for the producer-only sample campaign:
 
 ```bash
 scripts/run_semantic_exit_sample.sh
 ```
+
+Authoritative sample inputs:
+
+- wrapper: `scripts/run_semantic_exit_sample.sh`
+- execution evidence payload: `campaigns/semantic/semantic_exit_sample.execution_evidence.json`
+- semantic campaign overview: `campaigns/semantic/README.md`
 
 Outputs:
 - semantic run artifacts under `artifacts/semantic_campaign/post_roadmap/semantic/semantic-exit-sample/`
