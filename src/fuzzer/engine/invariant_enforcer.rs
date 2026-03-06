@@ -194,7 +194,42 @@ impl FuzzingEngine {
             } else {
                 1
             };
-            map.insert(input.name.to_lowercase(), (offset, len));
+            let canonical = input
+                .name
+                .trim()
+                .strip_prefix("main.")
+                .unwrap_or(input.name.trim())
+                .to_lowercase();
+            map.insert(canonical.clone(), (offset, len));
+            if len == 1 {
+                if let Some((base, idx)) = canonical.rsplit_once('_').and_then(|(base, idx_str)| {
+                    if idx_str.chars().all(|c| c.is_ascii_digit()) {
+                        idx_str.parse::<usize>().ok().map(|idx| (base, idx))
+                    } else {
+                        None
+                    }
+                }) {
+                    map.insert(format!("{}[{}]", base, idx), (offset, 1));
+                    let entry = map.entry(base.to_string()).or_insert((offset, 0));
+                    let start = entry.0.min(offset);
+                    let end = entry.0.saturating_add(entry.1).max(offset.saturating_add(1));
+                    *entry = (start, end.saturating_sub(start));
+                } else if let Some(open) = canonical.rfind('[') {
+                    if let Some(close) = canonical.rfind(']') {
+                        if close > open {
+                            if let Ok(idx) = canonical[open + 1..close].parse::<usize>() {
+                                let base = &canonical[..open];
+                                map.insert(format!("{}_{}", base, idx), (offset, 1));
+                                let entry = map.entry(base.to_string()).or_insert((offset, 0));
+                                let start = entry.0.min(offset);
+                                let end =
+                                    entry.0.saturating_add(entry.1).max(offset.saturating_add(1));
+                                *entry = (start, end.saturating_sub(start));
+                            }
+                        }
+                    }
+                }
+            }
             offset = offset.saturating_add(len);
         }
         map

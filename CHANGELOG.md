@@ -24,10 +24,13 @@ Rough monthly development summary for the current unreleased line.
 - Added regression coverage proving `.env.example` remains allowed while blocked root artifacts fail the hygiene gate
 - Refreshed operator-facing docs and test READMEs to match the current runtime and validation workflow
 - Routed `merkle_unconstrained` through dedicated Merkle benchmark templates instead of the generic strict probe and added regression coverage for that suite/catalog wiring
+- Fixed quantified-array invariant evaluation for `forall` constraints in both semantic and fuzzer-side invariant engines
+- Normalized reconciled indexed inputs so flattened executor schemas preserve base-array invariant checks and scalar field semantics
 
 ### Notes
 - The current published ground-truth benchmark is intentionally shallow (`50` iterations, `10s` timeout) and should be treated as a fast regression snapshot, not a production-depth effectiveness measurement
 - `merkle_unconstrained` remains the named missed target in the published benchmark, but the benchmark suite now carries a dedicated path-binarity invariant for rerun validation
+- A focused production-depth rerun (`5000` iterations, `300s` timeout) on the current tree still missed `merkle_unconstrained`, shifting the next diagnosis step toward underconstrained candidate generation and schema reconciliation rather than template selection alone
 
 ### 2026-03
 

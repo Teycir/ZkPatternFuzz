@@ -75,6 +75,40 @@ fn test_register_runtime_invariants_from_spec_inference() {
 }
 
 #[test]
+fn test_array_base_name_invariant_matches_reconciled_indexed_inputs() {
+    let invariant = Invariant {
+        name: "path_indices_binary".to_string(),
+        invariant_type: InvariantType::Constraint,
+        relation: "forall i in path_indices: path_indices[i] in {0,1}".to_string(),
+        oracle: InvariantOracle::MustHold,
+        transform: None,
+        expected: None,
+        description: Some("Path indices must remain binary".to_string()),
+        severity: Some("critical".to_string()),
+    };
+    let inputs = vec![
+        field_input("root"),
+        field_input("leaf"),
+        field_input("path_indices[0]"),
+        field_input("path_indices[1]"),
+        field_input("path_indices[2]"),
+    ];
+
+    let mut checker = InvariantChecker::new(vec![invariant], &inputs);
+    let witness = vec![
+        make_field_element(9),
+        make_field_element(5),
+        make_field_element(0),
+        make_field_element(1),
+        make_field_element(2),
+    ];
+
+    let violations = checker.check(&witness, &[], true);
+    assert_eq!(violations.len(), 1);
+    assert_eq!(violations[0].invariant_name, "path_indices_binary");
+}
+
+#[test]
 fn test_regression_underconstrained_merkle_detects_root_mismatch() {
     let merkle_invariant = Invariant {
         name: "merkle_root_integrity".to_string(),

@@ -228,6 +228,14 @@ impl FuzzingEngine {
             });
 
             spec.name = label;
+            if Self::split_bracket_index(&spec.name).is_some()
+                || Self::split_underscore_index(&spec.name).is_some()
+            {
+                // Executor-derived labels are flattened scalar positions, even when they
+                // originated from an array input in the source YAML.
+                spec.input_type = "field".to_string();
+                spec.length = None;
+            }
             if spec.input_type.trim().is_empty() {
                 spec.input_type = "field".to_string();
             }

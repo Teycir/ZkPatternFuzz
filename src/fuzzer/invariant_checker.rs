@@ -100,6 +100,64 @@ pub struct InvariantChecker {
 }
 
 impl InvariantChecker {
+    fn split_bracket_index(name: &str) -> Option<(&str, usize)> {
+        let open = name.rfind('[')?;
+        let close = name.rfind(']')?;
+        if close <= open {
+            return None;
+        }
+        let idx = name[open + 1..close].parse::<usize>().ok()?;
+        Some((&name[..open], idx))
+    }
+
+    fn split_underscore_index(name: &str) -> Option<(&str, usize)> {
+        let (base, idx_str) = name.rsplit_once('_')?;
+        if !idx_str.chars().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        let idx = idx_str.parse::<usize>().ok()?;
+        Some((base, idx))
+    }
+
+    fn canonical_input_name(name: &str) -> String {
+        name.trim()
+            .strip_prefix("main.")
+            .unwrap_or(name.trim())
+            .to_lowercase()
+    }
+
+    fn extend_alias_range(map: &mut HashMap<String, (usize, usize)>, alias: String, offset: usize) {
+        let entry = map.entry(alias).or_insert((offset, 0));
+        let start = entry.0.min(offset);
+        let end = entry.0.saturating_add(entry.1).max(offset.saturating_add(1));
+        *entry = (start, end.saturating_sub(start));
+    }
+
+    fn insert_input_aliases(
+        map: &mut HashMap<String, (usize, usize)>,
+        raw_name: &str,
+        offset: usize,
+        len: usize,
+    ) {
+        let canonical = Self::canonical_input_name(raw_name);
+        map.insert(canonical.clone(), (offset, len));
+
+        if len != 1 {
+            return;
+        }
+
+        if let Some((base, idx)) = Self::split_bracket_index(&canonical) {
+            map.insert(format!("{}_{}", base, idx), (offset, 1));
+            Self::extend_alias_range(map, base.to_string(), offset);
+            return;
+        }
+
+        if let Some((base, idx)) = Self::split_underscore_index(&canonical) {
+            map.insert(format!("{}[{}]", base, idx), (offset, 1));
+            Self::extend_alias_range(map, base.to_string(), offset);
+        }
+    }
+
     /// Create a new invariant checker from v2 invariants and input configuration
     pub fn new(invariants: Vec<Invariant>, inputs: &[crate::config::Input]) -> Self {
         let mut input_map = HashMap::new();
@@ -110,7 +168,7 @@ impl InvariantChecker {
             } else {
                 1
             };
-            input_map.insert(input.name.to_lowercase(), (offset, len));
+            Self::insert_input_aliases(&mut input_map, &input.name, offset, len);
             offset += len;
         }
         let parsed = invariants
@@ -372,6 +430,110 @@ impl InvariantChecker {
         }
 
         None
+    }
+
+    fn parse_quantifier_binder(binder: &str) -> (&str, Option<&str>) {
+        let trimmed = binder.trim();
+        if let Some((var, domain)) = trimmed.split_once(" in ") {
+            return (var.trim(), Some(domain.trim()));
+        }
+        (trimmed, None)
+    }
+
+    fn infer_quantifier_domain(expr: &InvariantAST, binder_var: &str) -> Option<String> {
+        match expr {
+            InvariantAST::ArrayAccess(name, index) if index.trim() == binder_var => {
+                Some(name.clone())
+            }
+            InvariantAST::Equals(left, right)
+            | InvariantAST::NotEquals(left, right)
+            | InvariantAST::LessThan(left, right)
+            | InvariantAST::LessThanOrEqual(left, right)
+            | InvariantAST::GreaterThan(left, right)
+            | InvariantAST::GreaterThanOrEqual(left, right)
+            | InvariantAST::InSet(left, right) => Self::infer_quantifier_domain(left, binder_var)
+                .or_else(|| Self::infer_quantifier_domain(right, binder_var)),
+            InvariantAST::Range {
+                lower,
+                value,
+                upper,
+                ..
+            } => Self::infer_quantifier_domain(lower, binder_var)
+                .or_else(|| Self::infer_quantifier_domain(value, binder_var))
+                .or_else(|| Self::infer_quantifier_domain(upper, binder_var)),
+            InvariantAST::Set(values) => values
+                .iter()
+                .find_map(|value| Self::infer_quantifier_domain(value, binder_var)),
+            InvariantAST::ForAll { expr, .. } => Self::infer_quantifier_domain(expr, binder_var),
+            _ => None,
+        }
+    }
+
+    fn substitute_quantifier(expr: &InvariantAST, binder_var: &str, index: usize) -> InvariantAST {
+        let replacement = index.to_string();
+        match expr {
+            InvariantAST::Identifier(name) if name.trim() == binder_var => {
+                InvariantAST::Literal(replacement)
+            }
+            InvariantAST::ArrayAccess(name, current_index) if current_index.trim() == binder_var => {
+                InvariantAST::ArrayAccess(name.clone(), replacement)
+            }
+            InvariantAST::Equals(left, right) => InvariantAST::Equals(
+                Box::new(Self::substitute_quantifier(left, binder_var, index)),
+                Box::new(Self::substitute_quantifier(right, binder_var, index)),
+            ),
+            InvariantAST::NotEquals(left, right) => InvariantAST::NotEquals(
+                Box::new(Self::substitute_quantifier(left, binder_var, index)),
+                Box::new(Self::substitute_quantifier(right, binder_var, index)),
+            ),
+            InvariantAST::LessThan(left, right) => InvariantAST::LessThan(
+                Box::new(Self::substitute_quantifier(left, binder_var, index)),
+                Box::new(Self::substitute_quantifier(right, binder_var, index)),
+            ),
+            InvariantAST::LessThanOrEqual(left, right) => InvariantAST::LessThanOrEqual(
+                Box::new(Self::substitute_quantifier(left, binder_var, index)),
+                Box::new(Self::substitute_quantifier(right, binder_var, index)),
+            ),
+            InvariantAST::GreaterThan(left, right) => InvariantAST::GreaterThan(
+                Box::new(Self::substitute_quantifier(left, binder_var, index)),
+                Box::new(Self::substitute_quantifier(right, binder_var, index)),
+            ),
+            InvariantAST::GreaterThanOrEqual(left, right) => InvariantAST::GreaterThanOrEqual(
+                Box::new(Self::substitute_quantifier(left, binder_var, index)),
+                Box::new(Self::substitute_quantifier(right, binder_var, index)),
+            ),
+            InvariantAST::InSet(left, right) => InvariantAST::InSet(
+                Box::new(Self::substitute_quantifier(left, binder_var, index)),
+                Box::new(Self::substitute_quantifier(right, binder_var, index)),
+            ),
+            InvariantAST::Range {
+                lower,
+                value,
+                upper,
+                inclusive_lower,
+                inclusive_upper,
+            } => InvariantAST::Range {
+                lower: Box::new(Self::substitute_quantifier(lower, binder_var, index)),
+                value: Box::new(Self::substitute_quantifier(value, binder_var, index)),
+                upper: Box::new(Self::substitute_quantifier(upper, binder_var, index)),
+                inclusive_lower: *inclusive_lower,
+                inclusive_upper: *inclusive_upper,
+            },
+            InvariantAST::Set(values) => InvariantAST::Set(
+                values
+                    .iter()
+                    .map(|value| Self::substitute_quantifier(value, binder_var, index))
+                    .collect(),
+            ),
+            InvariantAST::ForAll {
+                binder,
+                expr: nested_expr,
+            } => InvariantAST::ForAll {
+                binder: binder.clone(),
+                expr: Box::new(Self::substitute_quantifier(nested_expr, binder_var, index)),
+            },
+            _ => expr.clone(),
+        }
     }
 
     /// Parse uniqueness indices from relation like "unique(nullifier) for each (scope, secret)"
@@ -699,6 +861,26 @@ impl InvariantChecker {
                         circuit_accepted,
                     });
                 }
+            }
+            InvariantAST::ForAll { binder, expr } => {
+                let (binder_var, domain) = Self::parse_quantifier_binder(binder);
+                let domain = domain
+                    .map(str::to_string)
+                    .or_else(|| Self::infer_quantifier_domain(expr, binder_var))?;
+                let (_, len) = self.input_map.get(&domain.to_lowercase()).copied()?;
+                for idx in 0..len {
+                    let substituted = Self::substitute_quantifier(expr, binder_var, idx);
+                    if let Some(violation) = self.evaluate_constraint_ast(
+                        &substituted,
+                        invariant,
+                        inputs,
+                        outputs,
+                        circuit_accepted,
+                    ) {
+                        return Some(violation);
+                    }
+                }
+                return None;
             }
             _ => {}
         }

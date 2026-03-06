@@ -450,6 +450,110 @@ pub fn validate_invariant_against_inputs(
 }
 
 impl SemanticOracleEngine {
+    fn parse_quantifier_binder(binder: &str) -> (&str, Option<&str>) {
+        let trimmed = binder.trim();
+        if let Some((var, domain)) = trimmed.split_once(" in ") {
+            return (var.trim(), Some(domain.trim()));
+        }
+        (trimmed, None)
+    }
+
+    fn infer_quantifier_domain(expr: &InvariantAST, binder_var: &str) -> Option<String> {
+        match expr {
+            InvariantAST::ArrayAccess(name, index) if index.trim() == binder_var => {
+                Some(name.clone())
+            }
+            InvariantAST::Equals(left, right)
+            | InvariantAST::NotEquals(left, right)
+            | InvariantAST::LessThan(left, right)
+            | InvariantAST::LessThanOrEqual(left, right)
+            | InvariantAST::GreaterThan(left, right)
+            | InvariantAST::GreaterThanOrEqual(left, right)
+            | InvariantAST::InSet(left, right) => Self::infer_quantifier_domain(left, binder_var)
+                .or_else(|| Self::infer_quantifier_domain(right, binder_var)),
+            InvariantAST::Range {
+                lower,
+                value,
+                upper,
+                ..
+            } => Self::infer_quantifier_domain(lower, binder_var)
+                .or_else(|| Self::infer_quantifier_domain(value, binder_var))
+                .or_else(|| Self::infer_quantifier_domain(upper, binder_var)),
+            InvariantAST::Set(values) => values
+                .iter()
+                .find_map(|value| Self::infer_quantifier_domain(value, binder_var)),
+            InvariantAST::ForAll { expr, .. } => Self::infer_quantifier_domain(expr, binder_var),
+            _ => None,
+        }
+    }
+
+    fn substitute_quantifier(expr: &InvariantAST, binder_var: &str, index: usize) -> InvariantAST {
+        let replacement = index.to_string();
+        match expr {
+            InvariantAST::Identifier(name) if name.trim() == binder_var => {
+                InvariantAST::Literal(replacement)
+            }
+            InvariantAST::ArrayAccess(name, current_index) if current_index.trim() == binder_var => {
+                InvariantAST::ArrayAccess(name.clone(), replacement)
+            }
+            InvariantAST::Equals(left, right) => InvariantAST::Equals(
+                Box::new(Self::substitute_quantifier(left, binder_var, index)),
+                Box::new(Self::substitute_quantifier(right, binder_var, index)),
+            ),
+            InvariantAST::NotEquals(left, right) => InvariantAST::NotEquals(
+                Box::new(Self::substitute_quantifier(left, binder_var, index)),
+                Box::new(Self::substitute_quantifier(right, binder_var, index)),
+            ),
+            InvariantAST::LessThan(left, right) => InvariantAST::LessThan(
+                Box::new(Self::substitute_quantifier(left, binder_var, index)),
+                Box::new(Self::substitute_quantifier(right, binder_var, index)),
+            ),
+            InvariantAST::LessThanOrEqual(left, right) => InvariantAST::LessThanOrEqual(
+                Box::new(Self::substitute_quantifier(left, binder_var, index)),
+                Box::new(Self::substitute_quantifier(right, binder_var, index)),
+            ),
+            InvariantAST::GreaterThan(left, right) => InvariantAST::GreaterThan(
+                Box::new(Self::substitute_quantifier(left, binder_var, index)),
+                Box::new(Self::substitute_quantifier(right, binder_var, index)),
+            ),
+            InvariantAST::GreaterThanOrEqual(left, right) => InvariantAST::GreaterThanOrEqual(
+                Box::new(Self::substitute_quantifier(left, binder_var, index)),
+                Box::new(Self::substitute_quantifier(right, binder_var, index)),
+            ),
+            InvariantAST::InSet(left, right) => InvariantAST::InSet(
+                Box::new(Self::substitute_quantifier(left, binder_var, index)),
+                Box::new(Self::substitute_quantifier(right, binder_var, index)),
+            ),
+            InvariantAST::Range {
+                lower,
+                value,
+                upper,
+                inclusive_lower,
+                inclusive_upper,
+            } => InvariantAST::Range {
+                lower: Box::new(Self::substitute_quantifier(lower, binder_var, index)),
+                value: Box::new(Self::substitute_quantifier(value, binder_var, index)),
+                upper: Box::new(Self::substitute_quantifier(upper, binder_var, index)),
+                inclusive_lower: *inclusive_lower,
+                inclusive_upper: *inclusive_upper,
+            },
+            InvariantAST::Set(values) => InvariantAST::Set(
+                values
+                    .iter()
+                    .map(|value| Self::substitute_quantifier(value, binder_var, index))
+                    .collect(),
+            ),
+            InvariantAST::ForAll {
+                binder,
+                expr: nested_expr,
+            } => InvariantAST::ForAll {
+                binder: binder.clone(),
+                expr: Box::new(Self::substitute_quantifier(nested_expr, binder_var, index)),
+            },
+            _ => expr.clone(),
+        }
+    }
+
     pub fn with_input_map(input_map: HashMap<String, (usize, usize)>) -> Self {
         Self {
             input_map,
@@ -734,8 +838,20 @@ impl SemanticOracleEngine {
                     ));
                 }
             }
-            InvariantAST::ForAll { expr, .. } => {
-                return self.check_constraint_ast(expr, invariant, pair);
+            InvariantAST::ForAll { binder, expr } => {
+                let (binder_var, domain) = Self::parse_quantifier_binder(binder);
+                let domain = domain
+                    .map(str::to_string)
+                    .or_else(|| Self::infer_quantifier_domain(expr, binder_var))?;
+                let (_, len) = self.input_map.get(&domain.to_lowercase()).copied()?;
+                for idx in 0..len {
+                    let substituted = Self::substitute_quantifier(expr, binder_var, idx);
+                    if let Some(violation) = self.check_constraint_ast(&substituted, invariant, pair)
+                    {
+                        return Some(violation);
+                    }
+                }
+                return None;
             }
             _ => {}
         }
