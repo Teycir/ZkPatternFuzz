@@ -85,6 +85,7 @@ targets/zkbugs
 targets/zkbugs/
 node_modules/
 package-lock.json
+!/package-lock.json
 /bin/
 bins/
 **/.z3-trace

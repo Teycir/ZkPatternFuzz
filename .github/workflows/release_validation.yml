@@ -160,13 +160,20 @@ jobs:
           rustc --version || exit 1
           cargo --version || exit 1
 
-      - name: Verify Node.js availability (pre-provisioned)
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Verify Node.js toolchain
         run: |
           node --version || exit 1
           npm --version || exit 1
 
       - name: Install JavaScript dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Verify Rust installation
         run: |

@@ -132,13 +132,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify Node.js availability (pre-provisioned)
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Verify Node.js toolchain
         run: |
           node --version || exit 1
           npm --version || exit 1
 
       - name: Install JavaScript dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
       
       - name: Verify Rust toolchain availability (pre-provisioned)
         run: |
@@ -191,13 +198,20 @@ jobs:
           rustc --version || exit 1
           cargo --version || exit 1
 
-      - name: Verify Node.js availability (pre-provisioned)
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Verify Node.js toolchain
         run: |
           node --version || exit 1
           npm --version || exit 1
 
       - name: Install JavaScript dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Verify Rust installation
         run: |
@@ -297,7 +311,15 @@ jobs:
           rustc --version || exit 1
           cargo --version || exit 1
 
-      - name: Verify Node.js availability (pre-provisioned)
+      - name: Set up Node.js
+        if: steps.should_run.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Verify Node.js toolchain
         if: steps.should_run.outputs.run == 'true'
         run: |
           node --version || exit 1
@@ -305,7 +327,7 @@ jobs:
 
       - name: Install JavaScript dependencies
         if: steps.should_run.outputs.run == 'true'
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Verify Rust installation
         if: steps.should_run.outputs.run == 'true'
@@ -424,13 +446,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify Node.js availability (pre-provisioned)
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Verify Node.js toolchain
         run: |
           node --version || exit 1
           npm --version || exit 1
 
       - name: Install JavaScript dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
       
       - name: Verify Rust toolchain availability (pre-provisioned)
         run: |
@@ -473,13 +502,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify Node.js availability (pre-provisioned)
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Verify Node.js toolchain
         run: |
           node --version || exit 1
           npm --version || exit 1
 
       - name: Install JavaScript dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
       
       - name: Verify Rust toolchain availability (pre-provisioned)
         run: |
@@ -518,13 +554,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify Node.js availability (pre-provisioned)
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Verify Node.js toolchain
         run: |
           node --version || exit 1
           npm --version || exit 1
 
       - name: Install JavaScript dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
       
       - name: Verify Rust toolchain availability (pre-provisioned)
         run: |
