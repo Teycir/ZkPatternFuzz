@@ -267,10 +267,7 @@ impl ChainCorpus {
 
         // Persist a small meta sidecar so reporting can avoid reloading the whole corpus.
         let meta = self.compute_meta();
-        let meta_path = path
-            .parent()
-            .map_or_else(|| Path::new("."), |v| v)
-            .join("chain_corpus_meta.json");
+        let meta_path = path.parent().unwrap_or_else(|| Path::new(".")).join("chain_corpus_meta.json");
         {
             let f = std::fs::File::create(&meta_path)?;
             let mut w = BufWriter::new(f);

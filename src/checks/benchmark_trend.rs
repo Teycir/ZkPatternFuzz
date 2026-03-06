@@ -110,12 +110,7 @@ pub fn last_history_entry(history_file: &Path) -> anyhow::Result<Option<Value>> 
     }
     let raw = std::fs::read_to_string(history_file)
         .with_context(|| format!("Failed to read '{}'", history_file.display()))?;
-    let Some(last_non_empty) = raw
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .next_back()
-    else {
+    let Some(last_non_empty) = raw.lines().map(str::trim).rfind(|line| !line.is_empty()) else {
         return Ok(None);
     };
     let value: Value = serde_json::from_str(last_non_empty).with_context(|| {
