@@ -117,7 +117,9 @@ pub struct TestMetadata {
 ///
 /// This enum distinguishes between different classes of findings,
 /// helping to properly categorize and prioritize issues.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, Default,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum FindingClass {
     /// Oracle detected a semantic bug (highest confidence)
