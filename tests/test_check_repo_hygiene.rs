@@ -5,12 +5,21 @@ use zk_fuzzer::checks::repo_hygiene::{
 };
 
 #[test]
-fn detects_default_blocked_root_file() {
+fn detects_default_blocked_root_files() {
     let tmp = tempdir().expect("tempdir");
     let root = tmp.path();
-    std::fs::write(root.join("new_file.txt"), "").expect("write blocked placeholder");
+    std::fs::write(root.join(".env"), "SECRET=1\n").expect("write blocked env");
+    std::fs::write(root.join(".z3-trace"), "").expect("write blocked z3 trace");
+    std::fs::create_dir(root.join("node_modules")).expect("create blocked node_modules");
     let matches = blocked_root_files(root, DEFAULT_BLOCKED_ROOT_FILES.iter().copied());
-    assert_eq!(matches, vec!["new_file.txt".to_string()]);
+    assert_eq!(
+        matches,
+        vec![
+            ".env".to_string(),
+            ".z3-trace".to_string(),
+            "node_modules".to_string()
+        ]
+    );
 }
 
 #[test]
@@ -33,6 +42,7 @@ fn report_passes_when_no_matches() {
     let tmp = tempdir().expect("tempdir");
     let root = tmp.path();
     std::fs::write(root.join("README.md"), "ok\n").expect("write readme");
+    std::fs::write(root.join(".env.example"), "SAFE=1\n").expect("write env example");
     let report = build_report(root, DEFAULT_BLOCKED_ROOT_FILES, &Default::default());
     assert!(report.pass);
     assert!(report.matches.is_empty());

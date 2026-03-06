@@ -3,7 +3,7 @@ use serde::Serialize;
 use std::collections::BTreeSet;
 use std::path::Path;
 
-pub const DEFAULT_BLOCKED_ROOT_FILES: &[&str] = &["new_file.txt"];
+pub const DEFAULT_BLOCKED_ROOT_FILES: &[&str] = &[".env", ".z3-trace", "node_modules"];
 
 pub fn parse_blocklist_file(path: &Path) -> anyhow::Result<BTreeSet<String>> {
     let mut blocked = BTreeSet::new();

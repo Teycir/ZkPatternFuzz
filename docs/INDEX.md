@@ -69,6 +69,12 @@ This index focuses on the maintained operator-facing docs. Some top-level files 
 19. [SECURITY_THREAT_MODEL.md](SECURITY_THREAT_MODEL.md)
     Security boundaries and assumptions.
 
+20. [VALIDATION_EVIDENCE.md](VALIDATION_EVIDENCE.md)
+    Published real-target evidence case study with deterministic replay and Picus follow-up.
+
+21. [GROUND_TRUTH_REPORT.md](GROUND_TRUTH_REPORT.md)
+    Published benchmarked ground-truth recall, precision, and false-positive figures.
+
 ## Historical Context
 
 - [ARCHITECTURE.md](../ARCHITECTURE.md)

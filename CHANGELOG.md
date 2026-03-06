@@ -7,22 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- **Phase 2.4: Automated Triage System** (`src/reporting/triage.rs`)
-  - Confidence-based ranking of findings (0.0-1.0)
-  - Cross-oracle validation bonus (multiple oracles agree = higher confidence)
-  - Picus formal verification bonus
-  - Reproduction success tracking and bonus
-  - Code coverage correlation
-  - Finding deduplication
-  - Priority ranking system
-  - High/Medium/Low confidence classification
-  - Evidence mode filtering (auto-filter low-confidence findings)
-  - JSON and Markdown report generation
-  - See `docs/TRIAGE_SYSTEM.md` for complete documentation
-- Comprehensive architecture documentation (ARCHITECTURE.md)
-- Enhanced API documentation with examples
-- Module-level documentation improvements
+Rough monthly development summary for the current unreleased line.
+
+### 2026-03
+
+#### Changed
+- Restructured operator documentation:
+  - moved maintained operational docs under `docs/`
+  - refreshed the root `README.md` with onboarding, index, use cases, validation references, and tool comparison
+  - refreshed test fixture README files for current repo layout and commands
+- Standardized CVE regression assets:
+  - bundled portable CVE fixtures in-repo
+  - standardized regression expectations
+  - added Noir-oriented regression coverage
+- Hardened repository quality gates and test structure:
+  - moved inline production-file tests into dedicated integration tests
+  - generalized the `mode123` non-regression flow
+  - tightened repo hygiene checks for root-only artifact leaks
+- Improved backend and release ergonomics:
+  - better Halo2 public-input derivation and command fallback handling
+  - CI now installs JavaScript dependencies explicitly
+  - project relicensed to MIT
+
+### 2026-02
+
+#### Added
+- Evidence-oriented external-target workflow:
+  - archived replay bundles and proof-status tracking under `artifacts/external_targets/`
+  - deterministic replay artifacts for real targets
+  - Picus and solver-backed proof follow-up integrated into triage workflows
+- Batch and benchmark operating model:
+  - benchmark suites with published summary artifacts
+  - standardized smoke/standard/deep run wrappers
+  - release-candidate gate and readiness dashboards
+- Validation and measurement tooling:
+  - recall uplift, miss-reason coverage, backend effectiveness, and semantic-exit reports
+  - ground-truth and safe-suite benchmark summaries under `artifacts/benchmark_runs*`
+  - backend/tool inventory reporting under `docs/TOOLS_AVAILABLE_ON_HOST.md`
+
+#### Changed
+- Expanded the proof/evidence model across reporting and run outcomes:
+  - stricter classification of detection, proof, timeout, and readiness states
+  - tighter evidence-bundle expectations and replay documentation
+- Grew the CVE and external-target catalogs:
+  - broader pattern library coverage
+  - more real-target intake and archived batch summaries
+- Expanded architecture, roadmap, troubleshooting, and backend setup documentation to match the operational workflow now used in the repo
 
 ## [0.1.0] - 2024-02-04
 

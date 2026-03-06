@@ -274,6 +274,11 @@ Operational references:
 - [docs/TOOLS_AVAILABLE_ON_HOST.md](docs/TOOLS_AVAILABLE_ON_HOST.md)
 - [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)
 
+Validation references:
+
+- [docs/VALIDATION_EVIDENCE.md](docs/VALIDATION_EVIDENCE.md)
+- [docs/GROUND_TRUTH_REPORT.md](docs/GROUND_TRUTH_REPORT.md)
+
 Historical context:
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)
