@@ -3,14 +3,115 @@
 //! This test verifies that CVE regression tests actually execute circuits
 //! and detect vulnerabilities, not just return passed=true.
 
+use std::env;
+use std::fs;
 use std::path::Path;
+use std::sync::{Mutex, MutexGuard, OnceLock};
+
+use tempfile::tempdir;
 use zk_fuzzer::cve::{CveDatabase, RegressionTest};
 
 const CVE_DATABASE_PATH: &str = "templates/known_vulnerabilities.yaml";
 
+fn env_lock() -> MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+struct PathRestore(Option<String>);
+
+impl Drop for PathRestore {
+    fn drop(&mut self) {
+        if let Some(path) = &self.0 {
+            env::set_var("PATH", path);
+        } else {
+            env::remove_var("PATH");
+        }
+    }
+}
+
+fn find_command_on_path(command: &str) -> std::path::PathBuf {
+    env::var_os("PATH")
+        .into_iter()
+        .flat_map(|paths| env::split_paths(&paths).collect::<Vec<_>>())
+        .map(|dir| dir.join(command))
+        .find(|candidate| candidate.is_file())
+        .unwrap_or_else(|| {
+            panic!(
+                "`{}` must be available on PATH for CVE regression tests",
+                command
+            )
+        })
+}
+
+fn isolate_path_to_node_only() -> tempfile::TempDir {
+    let node_path = find_command_on_path("node");
+    let sandbox = tempdir().expect("node PATH sandbox");
+    let node_bin_dir = sandbox.path().join("bin");
+    fs::create_dir_all(&node_bin_dir).expect("create isolated node PATH");
+
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&node_path, node_bin_dir.join("node"))
+        .expect("symlink node into isolated PATH");
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_file(&node_path, node_bin_dir.join("node.exe"))
+        .expect("symlink node into isolated PATH");
+
+    env::set_var("PATH", &node_bin_dir);
+    sandbox
+}
+
+fn assert_bundled_circom_fixture_artifacts(circuit_path: &str) {
+    let circuit = Path::new(circuit_path);
+    let stem = circuit
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or_else(|| {
+            panic!(
+                "fixture circuit path must have a valid UTF-8 stem: {}",
+                circuit.display()
+            )
+        });
+    let build_dir = circuit
+        .parent()
+        .unwrap_or_else(|| {
+            panic!(
+                "fixture circuit path must have a parent directory: {}",
+                circuit.display()
+            )
+        })
+        .join("build");
+    let wasm_dir = build_dir.join(format!("{}_js", stem));
+    let required = [
+        build_dir.join(format!("{}.r1cs", stem)),
+        build_dir.join(format!("{}.sym", stem)),
+        build_dir.join(format!("{}_constraints.json", stem)),
+        build_dir.join(format!("{}_metadata.json", stem)),
+        wasm_dir.join(format!("{}.wasm", stem)),
+        wasm_dir.join("witness_calculator.js"),
+    ];
+
+    let missing: Vec<String> = required
+        .iter()
+        .filter(|path| !path.exists())
+        .map(|path| path.display().to_string())
+        .collect();
+
+    assert!(
+        missing.is_empty(),
+        "Bundled CVE fixture artifacts are required for clean-clone regression execution. Missing: {}",
+        missing.join(", ")
+    );
+}
+
 /// Test that CVE regression tests actually run and produce results
 #[test]
 fn test_cve_regression_tests_execute() {
+    let _guard = env_lock();
+    let _path_restore = PathRestore(env::var("PATH").ok());
+    let _node_path_only = isolate_path_to_node_only();
     let db =
         CveDatabase::load_strict(CVE_DATABASE_PATH).expect("Failed to load strict CVE database");
 
@@ -36,6 +137,7 @@ fn test_cve_regression_tests_execute() {
             circuit_not_found += 1;
             continue;
         }
+        assert_bundled_circom_fixture_artifacts(&test.circuit_path);
 
         // Run the regression test
         println!("  ▶️  Executing...");

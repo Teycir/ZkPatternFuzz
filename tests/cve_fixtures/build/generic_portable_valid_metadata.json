@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "metadata": {
+    "num_constraints": 1,
+    "num_private_inputs": 1,
+    "num_public_inputs": 1,
+    "num_outputs": 1,
+    "signals": {
+      "main.accepted": 1,
+      "main.secret": 3,
+      "main.pub": 2
+    },
+    "input_signals": [
+      "pub",
+      "secret"
+    ],
+    "input_signal_sizes": {
+      "secret": 1,
+      "pub": 1
+    },
+    "input_signal_indices": [
+      2,
+      3
+    ],
+    "public_input_indices": [
+      2
+    ],
+    "private_input_indices": [
+      3
+    ],
+    "output_signals": [
+      "accepted"
+    ],
+    "output_signal_indices": [
+      1
+    ],
+    "prime": "bn128"
+  }
+}

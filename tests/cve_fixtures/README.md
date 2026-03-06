@@ -14,6 +14,7 @@ These circuits are intentionally small regression targets referenced by `templat
 Each fixture should satisfy the following:
 
 - compile with the local in-repo test toolchain flow
+- ship a checked-in reusable `build/` bundle so the regression lane works on a clean clone
 - encode one narrow security contract clearly enough for valid and invalid cases
 - stay small enough to be used in repeatable regression runs
 - avoid hidden environmental dependencies outside the repository

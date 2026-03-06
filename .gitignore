@@ -78,6 +78,8 @@ circuits
 third_party
 build/zk0d/circom/withdraw_Withdraw/withdraw.r1cs
 build/
+!tests/cve_fixtures/build/
+!tests/cve_fixtures/build/**
 campaigns/zk0d/semaphore_main.circom
 build/zk0d/semaphore/pot14_0000.ptau
 .npm-cache
