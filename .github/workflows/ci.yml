@@ -551,7 +551,7 @@ jobs:
           z3 --version
       
       - name: Run benchmarks
-        run: cargo bench --all-features -- --noplot
+        run: cargo bench --all-features --benches -- --noplot
       
       - name: Store benchmark results
         uses: actions/upload-artifact@v4
