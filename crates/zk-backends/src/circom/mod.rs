@@ -1261,6 +1261,24 @@ impl CircomTarget {
         self
     }
 
+    /// Returns true when the build directory already contains the full artifact
+    /// bundle required for executor creation without recompiling.
+    pub fn has_reusable_artifacts(&self) -> Result<bool> {
+        let basename = self.output_basename()?;
+        let wasm_dir = self.build_dir.join(format!("{}_js", basename));
+        let wasm_path = wasm_dir.join(format!("{}.wasm", basename));
+        let witness_calculator_path = wasm_dir.join("witness_calculator.js");
+        let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
+        let constraints_path = self.constraints_json_path()?;
+        let metadata_cache_path = self.metadata_cache_path()?;
+
+        Ok(r1cs_path.exists()
+            && wasm_path.exists()
+            && witness_calculator_path.exists()
+            && constraints_path.exists()
+            && metadata_cache_path.exists())
+    }
+
     /// Check if circom is available
     pub fn check_circom_available() -> Result<String> {
         let candidates = circom_command_candidates(None);

@@ -595,10 +595,19 @@ impl ExecutorFactory {
 
         CircomExecutor::ensure_bins_on_path();
 
-        // Check if circom is available
-        match CircomTarget::check_circom_available() {
-            Ok(version) => {
-                tracing::info!("Using Circom backend: {}", version);
+        let build_dir = options.resolve_build_dir(Framework::Circom, circuit_path, main_component);
+        let can_reuse_artifacts_without_circom = if options.circom_skip_compile_if_artifacts {
+            let mut target = CircomTarget::new(circuit_path, main_component)?;
+            if let Some(dir) = build_dir.clone() {
+                target = target.with_build_dir(dir);
+            }
+            target.has_reusable_artifacts().unwrap_or(false)
+        } else {
+            false
+        };
+
+        let create_executor_from_configured_toolchain =
+            || -> anyhow::Result<Arc<dyn CircuitExecutor>> {
                 if !options.circom_include_paths.is_empty() {
                     tracing::info!(
                         "Using Circom include paths: {:?}",
@@ -608,13 +617,11 @@ impl ExecutorFactory {
                 if let Some(snarkjs_path) = &options.circom_snarkjs_path {
                     tracing::info!("Using snarkjs CLI: {:?}", snarkjs_path);
                 }
-                let build_dir =
-                    options.resolve_build_dir(Framework::Circom, circuit_path, main_component);
                 let mut executor = CircomExecutor::new_with_options(
                     circuit_path,
                     main_component,
                     CircomExecutorOptions {
-                        build_dir,
+                        build_dir: build_dir.clone(),
                         include_paths: options.circom_include_paths.clone(),
                         ptau_path: options.circom_ptau_path.clone(),
                         snarkjs_path: options.circom_snarkjs_path.clone(),
@@ -630,6 +637,21 @@ impl ExecutorFactory {
                         .context("Circom key setup failed during executor preflight")?;
                 }
                 Ok(Arc::new(executor))
+            };
+
+        // Check if circom is available
+        match CircomTarget::check_circom_available() {
+            Ok(version) => {
+                tracing::info!("Using Circom backend: {}", version);
+                create_executor_from_configured_toolchain()
+            }
+            Err(err) if can_reuse_artifacts_without_circom => {
+                tracing::warn!(
+                    "Circom CLI unavailable ({}); reusing prebuilt artifacts for '{}'",
+                    err,
+                    circuit_path
+                );
+                create_executor_from_configured_toolchain()
             }
             Err(e) => {
                 anyhow::bail!(

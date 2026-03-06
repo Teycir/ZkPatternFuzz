@@ -89,3 +89,4 @@ package-lock.json
 /bin/
 bins/
 **/.z3-trace
+tests/cairo_projects/cairo1_constant/target/_scarb_cache/registry/git/checkouts/cubit-k9rijvovof89o/6275608
