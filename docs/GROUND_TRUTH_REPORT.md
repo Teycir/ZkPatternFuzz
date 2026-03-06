@@ -74,44 +74,49 @@ Missed in both seeded trials:
 
 - `merkle_unconstrained`
 
-## Merkle Miss Diagnosis
+## Merkle Target Status
 
-Current diagnosis for `merkle_unconstrained`:
+Published baseline status for `merkle_unconstrained`:
 
-- the target did not fail due to infrastructure or setup issues
-- both benchmark trials completed successfully
-- both trials reached the attack stage
-- both trials produced `0` findings
-- a focused production-depth rerun with the dedicated Merkle template (`5000` iterations, `300s` timeout) also completed, reached the attack stage, and produced `0` findings on the current tree
-- subsequent focused reruns after quantified-invariant and reconciled-input fixes still produced `0` findings on the current tree
+- the benchmark published at the top of this report still missed the target in both seeded trials
+- those published metrics remain the official fast-regression baseline for this document
 
-This points away from backend readiness problems and toward signal-generation gaps that persist even after the benchmark-template correction.
+Current focused rerun status on the current tree:
 
-Most likely contributing factors:
+- a dedicated diagnostic rerun now detects `merkle_unconstrained`:
+  - suite artifact: `artifacts/benchmark_runs_merkle_diagnostic_no_rlimit_as/benchmark_20260306_015923/summary.json`
+  - scan artifact: `artifacts/benchmark_runs_merkle_diagnostic_no_rlimit_as/scan_outputs/merkle_diagnostic/merkle_unconstrained/trial_1_seed_42/.scan_run_artifacts/scan_run20260306_015826/auto__merkle_path_binarity_probe/report.json`
+- the suite completed successfully, reached the attack stage, and recorded `1/1` detections
+- high-confidence detection is still `0/1`, so this focused rerun improves recall but does not yet improve the published high-confidence number
+- the critical signal is a real `underconstrained` finding, not just a generic crash or hint-only artifact
+- underconstrained execution summary from the diagnostic rerun:
+  - `attempted=128`
+  - `successful=28`
+  - `failed=100`
+  - `collision_groups=1`
+  - `non_binary_generated=40/128`
+  - `non_binary_successful=6/28`
 
-- the published benchmark used the generic strict probe template, which only carried a baseline invariant (`field_input_domain`) and did not encode a Merkle-specific binary-path invariant
-- the dedicated regression test for this same target in [ground_truth_regression.rs](../tests/ground_truth_regression.rs) expects detection with `10_000` iterations, which is materially deeper than the published benchmark's `50`
-- focused rerun logs still show input-schema reconciliation (`config has 4, executor expects 8`) before attack execution, so public/private slot mapping remains a plausible source of degraded signal quality
-- focused rerun logs also show underconstrained post-processing terminating at the wall-clock budget, which suggests the remaining miss is now more likely in candidate generation, seed quality, or post-processing coverage than in pure pattern selection
-- the current `MerkleOracle` models extracted path indices as booleans, which is useful for some Merkle soundness checks but is not a direct detector for arbitrary non-binary selector values
-
-Working conclusion:
-
-- primary suspicion: underconstrained attack generation is not producing or preserving the non-binary Merkle-path witnesses needed for this target under the reconciled input shape
-- secondary suspicion: public/private witness ordering or reconciliation is still diluting the effective search space for this circuit
-- tertiary suspicion: Merkle oracle coverage remains too indirect for this bug class without a stronger exploit-oriented post-check
-
-Follow-up status:
+What changed between the miss and the detection:
 
 - benchmark suite routing now assigns `merkle_unconstrained` to `campaigns/benchmark/patterns/merkle_path_binarity_probe.yaml` in default/dev runs and `merkle_path_binarity_probe_prod.yaml` in prod-depth runs
 - quantified `forall` array invariants now evaluate correctly in both the core semantic oracle engine and the fuzzer invariant checker
 - reconciled indexed inputs such as `path_indices[0]` are now aliased back to their base array names for invariant evaluation and scalarized when the executor-derived schema flattens arrays into individual field slots
-- the published metrics at the top of this report still predate these changes and should be treated as a pre-fix baseline for this target
-- focused production-depth validation artifacts now exist under:
-  - `artifacts/benchmark_runs_merkle_validation/benchmark_20260306_004139/`
-  - `artifacts/benchmark_runs_merkle_validation_after_quantifier_fix/benchmark_20260306_005312/`
-  - `artifacts/benchmark_runs_merkle_validation_after_reconcile_fix/benchmark_20260306_010018/`
-- the next required work is not another template tweak; it is targeted instrumentation of underconstrained candidate generation and reconciliation behavior for `merkle_unconstrained`, followed by another production-depth rerun
+- underconstrained attack seeding now loads direct witness seeds from `campaigns/benchmark/seed_inputs/merkle_unconstrained_seed_inputs.json` instead of relying only on corpus-derived recovery
+- Circom per-exec isolation no longer applies a default `RLIMIT_AS` cap when the operator has not explicitly set `isolation_memory_limit_mb` or `isolation_memory_limit_bytes`; this removes the prior `WebAssembly.instantiate(): Out of memory` worker failure seen under isolated witness generation
+
+Remaining limitations:
+
+- the published metrics at the top of this report still predate these changes and should be treated as a pre-fix baseline
+- the focused rerun is diagnostic, not yet a replacement for the full `vulnerable_ground_truth` benchmark publication
+- `100/128` underconstrained candidate executions still failed, mostly due to circuit-level assertion failures on invalid witness candidates
+- boundary-path execution for this target is still noisy under the reconciled `8`-signal input shape
+- high-confidence detection remains `0%` in the focused rerun, so the credibility gap is narrowed but not closed
+
+Next required work:
+
+- rerun the full vulnerable benchmark suite on the current tree so the published top-line recall numbers reflect the Merkle detection fix
+- reduce invalid witness-candidate generation for this target so more non-binary Merkle paths survive execution and improve confidence/precision under deeper settings
 
 ## Source Artifacts
 

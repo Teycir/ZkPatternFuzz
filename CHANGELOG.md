@@ -14,6 +14,7 @@ Rough monthly development summary for the current unreleased line.
 ### Added
 - Published [VALIDATION_EVIDENCE.md](docs/VALIDATION_EVIDENCE.md) with a deterministic exploit replay for `EXT-003`, exact witness values, replay command, and Picus follow-up status
 - Published [GROUND_TRUTH_REPORT.md](docs/GROUND_TRUTH_REPORT.md) with measured benchmark recall, precision, false-positive rates, and confidence intervals
+- Added a standalone Merkle seed bundle at `campaigns/benchmark/seed_inputs/merkle_unconstrained_seed_inputs.json` plus a generator script for regenerating that fixture
 - Expanded the root README with:
   - an index
   - concrete use cases
@@ -26,11 +27,14 @@ Rough monthly development summary for the current unreleased line.
 - Routed `merkle_unconstrained` through dedicated Merkle benchmark templates instead of the generic strict probe and added regression coverage for that suite/catalog wiring
 - Fixed quantified-array invariant evaluation for `forall` constraints in both semantic and fuzzer-side invariant engines
 - Normalized reconciled indexed inputs so flattened executor schemas preserve base-array invariant checks and scalar field semantics
+- Underconstrained witness seeding now loads direct external seeds for Merkle diagnostics instead of relying only on corpus recovery
+- Circom per-exec isolation now leaves `RLIMIT_AS` unset by default unless the operator explicitly configures an isolation memory limit, avoiding isolated Node/WASM witness-worker OOMs
+- Added regression coverage proving the new Circom isolation default still preserves explicit memory-cap overrides
 
 ### Notes
 - The current published ground-truth benchmark is intentionally shallow (`50` iterations, `10s` timeout) and should be treated as a fast regression snapshot, not a production-depth effectiveness measurement
-- `merkle_unconstrained` remains the named missed target in the published benchmark, but the benchmark suite now carries a dedicated path-binarity invariant for rerun validation
-- A focused production-depth rerun (`5000` iterations, `300s` timeout) on the current tree still missed `merkle_unconstrained`, shifting the next diagnosis step toward underconstrained candidate generation and schema reconciliation rather than template selection alone
+- `merkle_unconstrained` remains missed in the published fast benchmark at the top of `GROUND_TRUTH_REPORT.md`, but a newer focused diagnostic rerun on the current tree now detects it via a critical `underconstrained` finding
+- The focused Merkle rerun still lands at `0%` high-confidence detection and shows heavy invalid-candidate attrition, so the next work is full-suite republishing plus better satisfiable witness generation for that target
 
 ### 2026-03
 
