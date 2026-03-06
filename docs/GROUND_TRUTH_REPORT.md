@@ -52,6 +52,15 @@ The target documented in [tests/ground_truth_circuits/README.md](../tests/ground
 
 This report intentionally records the measured result rather than the desired target.
 
+The high-confidence figure should also be read in the context of the benchmark profile used for this publication:
+
+- only `50` iterations per run
+- only `10` seconds timeout per run
+- lightweight benchmark template `campaigns/benchmark/patterns/underconstrained_strict_probe.yaml`
+- strict high-confidence thresholding enabled in the benchmark summary
+
+These settings are useful for fast comparative regression, but they are intentionally shallow and are not representative of a production-depth campaign.
+
 ## Detected And Missed Targets
 
 Detected in both seeded trials:
@@ -64,6 +73,32 @@ Detected in both seeded trials:
 Missed in both seeded trials:
 
 - `merkle_unconstrained`
+
+## Merkle Miss Diagnosis
+
+Current diagnosis for `merkle_unconstrained`:
+
+- the target did not fail due to infrastructure or setup issues
+- both benchmark trials completed successfully
+- both trials reached the attack stage
+- both trials produced `0` findings
+
+This points away from backend readiness problems and toward signal-generation gaps under the shallow benchmark profile.
+
+Most likely contributing factors:
+
+- the published benchmark used the generic strict probe template, which only carries a baseline invariant (`field_input_domain`) and does not encode a Merkle-specific binary-path invariant
+- the dedicated regression test for this same target in [ground_truth_regression.rs](../tests/ground_truth_regression.rs) expects detection with `10_000` iterations, which is materially deeper than the published benchmark's `50`
+- the current `MerkleOracle` models extracted path indices as booleans, which is useful for some Merkle soundness checks but is not a direct detector for arbitrary non-binary selector values
+
+Working conclusion:
+
+- primary suspicion: benchmark-pattern gap plus insufficient search depth
+- secondary suspicion: Merkle oracle coverage is too indirect for this bug class in generic benchmark mode
+
+Recommended next step:
+
+- add a Merkle-specific benchmark invariant for path-index binarity and rerun this target at production-depth settings before treating it as a structural recall ceiling
 
 ## Source Artifacts
 

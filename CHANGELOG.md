@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Rough monthly development summary for the current unreleased line.
 
+## [0.3.0] - 2026-03-06
+
+### Added
+- Published [VALIDATION_EVIDENCE.md](docs/VALIDATION_EVIDENCE.md) with a deterministic exploit replay for `EXT-003`, exact witness values, replay command, and Picus follow-up status
+- Published [GROUND_TRUTH_REPORT.md](docs/GROUND_TRUTH_REPORT.md) with measured benchmark recall, precision, false-positive rates, and confidence intervals
+- Expanded the root README with:
+  - an index
+  - concrete use cases
+  - ZK-native comparison coverage including Picus, Circomspect, CIVER, and `circom --inspect`
+
+### Changed
+- Hardened repo hygiene defaults so root `.env`, `.z3-trace`, and `node_modules/` are now blocked by `zkf_checks repo-hygiene`
+- Added regression coverage proving `.env.example` remains allowed while blocked root artifacts fail the hygiene gate
+- Refreshed operator-facing docs and test READMEs to match the current runtime and validation workflow
+
+### Notes
+- The current published ground-truth benchmark is intentionally shallow (`50` iterations, `10s` timeout) and should be treated as a fast regression snapshot, not a production-depth effectiveness measurement
+- `merkle_unconstrained` remains the named missed target in the published benchmark and is currently assessed as a likely benchmark-pattern-plus-budget gap rather than an infra failure
+
 ### 2026-03
 
 #### Changed
