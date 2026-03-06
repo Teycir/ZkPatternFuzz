@@ -16,8 +16,10 @@ fn parse_decimal_field(raw: &str) -> FieldElement {
 }
 
 fn load_first_merkle_seed() -> Vec<FieldElement> {
-    let raw = std::fs::read_to_string("campaigns/benchmark/seed_inputs/merkle_unconstrained_seed_inputs.json")
-        .expect("read merkle seed bundle");
+    let raw = std::fs::read_to_string(
+        "campaigns/benchmark/seed_inputs/merkle_unconstrained_seed_inputs.json",
+    )
+    .expect("read merkle seed bundle");
     let seeds: serde_json::Value = serde_json::from_str(&raw).expect("parse merkle seed bundle");
     let first = seeds[0].as_object().expect("first seed object");
 
@@ -32,7 +34,9 @@ fn load_first_merkle_seed() -> Vec<FieldElement> {
         .as_array()
         .expect("path_elements array")
     {
-        inputs.push(parse_decimal_field(value.as_str().expect("path element string")));
+        inputs.push(parse_decimal_field(
+            value.as_str().expect("path element string"),
+        ));
     }
     for value in first["path_indices"]
         .as_array()

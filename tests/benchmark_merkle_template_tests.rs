@@ -53,7 +53,10 @@ fn find_target<'a>(suite_file: &'a BenchmarkSuitesFile, target_name: &str) -> &'
 
 #[test]
 fn merkle_target_uses_dedicated_template_in_default_and_dev_suites() {
-    for relative in ["targets/benchmark_suites.yaml", "targets/benchmark_suites.dev.yaml"] {
+    for relative in [
+        "targets/benchmark_suites.yaml",
+        "targets/benchmark_suites.dev.yaml",
+    ] {
         let suites: BenchmarkSuitesFile = load_yaml_file(relative);
         let merkle = find_target(&suites, "merkle_unconstrained");
         assert_eq!(
@@ -83,7 +86,10 @@ fn merkle_target_uses_dedicated_template_in_prod_suite() {
 
 #[test]
 fn merkle_template_is_registered_without_widening_generic_aliases() {
-    for relative in ["targets/benchmark_registry.yaml", "targets/benchmark_registry.dev.yaml"] {
+    for relative in [
+        "targets/benchmark_registry.yaml",
+        "targets/benchmark_registry.dev.yaml",
+    ] {
         let registry: BenchmarkRegistryFile = load_yaml_file(relative);
         let generic = registry
             .collections

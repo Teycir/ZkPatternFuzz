@@ -129,7 +129,10 @@ impl InvariantChecker {
     fn extend_alias_range(map: &mut HashMap<String, (usize, usize)>, alias: String, offset: usize) {
         let entry = map.entry(alias).or_insert((offset, 0));
         let start = entry.0.min(offset);
-        let end = entry.0.saturating_add(entry.1).max(offset.saturating_add(1));
+        let end = entry
+            .0
+            .saturating_add(entry.1)
+            .max(offset.saturating_add(1));
         *entry = (start, end.saturating_sub(start));
     }
 
@@ -475,7 +478,9 @@ impl InvariantChecker {
             InvariantAST::Identifier(name) if name.trim() == binder_var => {
                 InvariantAST::Literal(replacement)
             }
-            InvariantAST::ArrayAccess(name, current_index) if current_index.trim() == binder_var => {
+            InvariantAST::ArrayAccess(name, current_index)
+                if current_index.trim() == binder_var =>
+            {
                 InvariantAST::ArrayAccess(name.clone(), replacement)
             }
             InvariantAST::Equals(left, right) => InvariantAST::Equals(

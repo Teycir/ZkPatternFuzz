@@ -164,7 +164,10 @@ struct BufferGuard(Arc<Mutex<Vec<u8>>>);
 
 impl std::io::Write for BufferGuard {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().expect("log buffer lock").extend_from_slice(buf);
+        self.0
+            .lock()
+            .expect("log buffer lock")
+            .extend_from_slice(buf);
         Ok(buf.len())
     }
 
