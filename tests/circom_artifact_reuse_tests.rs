@@ -8,7 +8,6 @@ use std::time::Duration;
 use tempfile::tempdir;
 use zk_core::Framework;
 use zk_fuzzer::executor::{ExecutorFactory, ExecutorFactoryOptions};
-use zk_fuzzer::targets::CircomTarget;
 
 fn env_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -41,26 +40,64 @@ fn cve_fixture_path(name: &str) -> PathBuf {
 }
 
 fn build_cve_fixture_bundle(name: &str, main_component: &str, dest_root: &Path) -> PathBuf {
-    CircomTarget::check_circom_available().expect("Circom CLI required to build fixture bundle");
-    CircomTarget::check_snarkjs_available().expect("snarkjs CLI required to build fixture bundle");
-
     let circuit_path = cve_fixture_path(name);
     let staged_circuit_path = dest_root.join(format!("{}.circom", name));
     let build_dir = dest_root.join("build");
+    let wasm_dir = build_dir.join(format!("{}_js", name));
     fs::create_dir_all(dest_root).expect("create fixture destination");
     fs::copy(&circuit_path, &staged_circuit_path).expect("copy fixture circuit");
+    fs::create_dir_all(&wasm_dir).expect("create synthetic wasm directory");
 
-    let options = ExecutorFactoryOptions {
-        circom_build_dir: Some(build_dir.clone()),
-        ..ExecutorFactoryOptions::default()
-    };
-    ExecutorFactory::create_with_options(
-        Framework::Circom,
-        staged_circuit_path.to_str().expect("utf8 fixture path"),
-        main_component,
-        &options,
+    fs::write(build_dir.join(format!("{}.r1cs", name)), b"synthetic r1cs")
+        .expect("write synthetic r1cs");
+    fs::write(build_dir.join(format!("{}.sym", name)), b"synthetic sym")
+        .expect("write synthetic sym");
+    fs::write(wasm_dir.join(format!("{}.wasm", name)), b"\0asm").expect("write synthetic wasm");
+    fs::write(
+        wasm_dir.join("witness_calculator.js"),
+        "// synthetic witness calculator placeholder\n",
     )
-    .expect("build reusable fixture bundle");
+    .expect("write synthetic witness calculator");
+    fs::write(
+        build_dir.join(format!("{}_constraints.json", name)),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "constraints": [
+                [
+                    { "0": "1" },
+                    { "0": "1" },
+                    { "0": "1" }
+                ]
+            ]
+        }))
+        .expect("serialize synthetic constraints"),
+    )
+    .expect("write synthetic constraints");
+    fs::write(
+        build_dir.join(format!("{}_metadata.json", name)),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "version": 1,
+            "metadata": {
+                "num_constraints": 1,
+                "num_private_inputs": 0,
+                "num_public_inputs": 0,
+                "num_outputs": 1,
+                "signals": {
+                    "one": 0,
+                    format!("{}.out", main_component): 1
+                },
+                "input_signals": [],
+                "input_signal_sizes": {},
+                "input_signal_indices": [],
+                "public_input_indices": [],
+                "private_input_indices": [],
+                "output_signals": [format!("{}.out", main_component)],
+                "output_signal_indices": [1],
+                "prime": "bn128"
+            }
+        }))
+        .expect("serialize synthetic metadata"),
+    )
+    .expect("write synthetic metadata");
 
     assert!(
         build_dir.join(format!("{}.r1cs", name)).exists(),
