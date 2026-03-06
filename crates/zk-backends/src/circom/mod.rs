@@ -1304,18 +1304,17 @@ impl CircomTarget {
 
     /// Check if snarkjs is available
     pub fn check_snarkjs_available() -> Result<String> {
-        let (output, candidate) =
+        let (output, _candidate) =
             run_snarkjs_with_fallback_capture(None, "snarkjs not found", |cmd| {
                 cmd.arg("--version");
             })?;
 
+        let version_line = crate::util::command_version_line(&output);
         if !output.status.success() {
-            let version_line = crate::util::command_version_line(&output);
-            let looks_like_npx_banner = candidate == "npx snarkjs"
-                && version_line
-                    .as_deref()
-                    .is_some_and(|line| line.trim_start().starts_with("snarkjs@"));
-            if !looks_like_npx_banner {
+            let looks_like_snarkjs_banner = version_line
+                .as_deref()
+                .is_some_and(|line| line.trim_start().starts_with("snarkjs@"));
+            if !looks_like_snarkjs_banner {
                 anyhow::bail!(
                     "snarkjs --version failed: {}",
                     crate::util::command_failure_summary(&output)
@@ -1323,7 +1322,7 @@ impl CircomTarget {
             }
         }
 
-        crate::util::command_version_line(&output).ok_or_else(|| {
+        version_line.ok_or_else(|| {
             anyhow::anyhow!(
                 "snarkjs --version returned empty output: {}",
                 crate::util::command_failure_summary(&output)
@@ -2279,9 +2278,12 @@ impl CircomTarget {
         if !cache_path.exists() {
             return Ok(false);
         }
+        // The metadata cache must track the built artifact bundle, not the source file mtime.
+        // Fresh checkouts can reorder checked-in timestamps and should not force a snarkjs probe
+        // when callers explicitly asked to reuse prebuilt artifacts.
         if !Self::is_cache_fresh(
             cache_path,
-            &[r1cs_path, &self.circuit_path],
+            &[r1cs_path],
             if sym_path.exists() {
                 Some(sym_path)
             } else {

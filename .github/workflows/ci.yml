@@ -652,8 +652,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Verify cargo-audit availability (pre-provisioned)
-        run: command -v cargo-audit >/dev/null 2>&1 || { echo "::error::cargo-audit not found in PATH"; exit 1; }
+      - name: Install cargo-audit
+        run: |
+          cargo --version || exit 1
+          if ! command -v cargo-audit >/dev/null 2>&1; then
+            cargo install --locked cargo-audit
+          fi
+          cargo-audit --version
       
       - name: Run security audit
         run: cargo audit

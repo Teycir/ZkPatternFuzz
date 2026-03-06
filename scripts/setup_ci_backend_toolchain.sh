@@ -43,6 +43,27 @@ download() {
   curl --fail --location --retry 5 --retry-delay 2 --retry-connrefused "$url" -o "$output"
 }
 
+first_non_empty_line() {
+  awk 'NF { print; exit }'
+}
+
+probe_snarkjs_version() {
+  local line
+  line="$(snarkjs --version 2>&1 | first_non_empty_line || true)"
+  if [[ -n "$line" ]]; then
+    printf '%s\n' "$line"
+    return 0
+  fi
+
+  line="$(snarkjs --help 2>&1 | first_non_empty_line || true)"
+  if [[ -n "$line" ]]; then
+    printf '%s\n' "$line"
+    return 0
+  fi
+
+  return 1
+}
+
 install_circom() {
   if command -v circom >/dev/null 2>&1 && circom --version 2>/dev/null | grep -Fq "$CIRCOM_VERSION"; then
     return
@@ -56,7 +77,7 @@ install_circom() {
 
 install_snarkjs() {
   local current_version
-  current_version="$(snarkjs --version 2>/dev/null | head -n 1 || true)"
+  current_version="$(probe_snarkjs_version || true)"
   if [[ "$current_version" == *"$SNARKJS_VERSION"* ]]; then
     return
   fi
@@ -128,7 +149,7 @@ verify_circom_profile() {
   command -v circom >/dev/null 2>&1
   command -v snarkjs >/dev/null 2>&1
   circom --version
-  snarkjs --version
+  probe_snarkjs_version
 }
 
 verify_full_profile() {
@@ -141,7 +162,7 @@ verify_full_profile() {
   command -v cairo-run >/dev/null 2>&1
 
   circom --version
-  snarkjs --version
+  probe_snarkjs_version
   nargo --version
   scarb --version
   cairo-compile --version
