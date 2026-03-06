@@ -189,13 +189,8 @@ jobs:
           command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
           z3 --version
 
-      - name: Verify backend toolchain availability (pre-provisioned)
-        run: |
-          command -v bubblewrap >/dev/null 2>&1 || command -v bwrap >/dev/null 2>&1 || { echo "::error::bubblewrap/bwrap not found in PATH"; exit 1; }
-          command -v circom >/dev/null 2>&1 || { echo "::error::circom not found in PATH"; exit 1; }
-          command -v snarkjs >/dev/null 2>&1 || { echo "::error::snarkjs not found in PATH"; exit 1; }
-          command -v nargo >/dev/null 2>&1 || { echo "::error::nargo not found in PATH"; exit 1; }
-          command -v scarb >/dev/null 2>&1 || { echo "::error::scarb not found in PATH"; exit 1; }
+      - name: Set up backend toolchain
+        run: bash scripts/setup_ci_backend_toolchain.sh full
 
       - name: Build benchmark binaries
         run: cargo build --release --bin zk0d_batch --bin zk0d_benchmark
