@@ -75,8 +75,11 @@ fn stage_cve_fixture_bundle(name: &str, dest_root: &Path) -> PathBuf {
         format!("{}_constraints.json", name),
         format!("{}_metadata.json", name),
     ] {
-        fs::copy(src_build_root.join(&file_name), dst_build_root.join(&file_name))
-            .expect("copy fixture build artifact");
+        fs::copy(
+            src_build_root.join(&file_name),
+            dst_build_root.join(&file_name),
+        )
+        .expect("copy fixture build artifact");
     }
     copy_dir_recursive(
         &src_build_root.join(format!("{}_js", name)),
