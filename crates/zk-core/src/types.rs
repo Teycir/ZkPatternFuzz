@@ -117,7 +117,7 @@ pub struct TestMetadata {
 ///
 /// This enum distinguishes between different classes of findings,
 /// helping to properly categorize and prioritize issues.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum FindingClass {
     /// Oracle detected a semantic bug (highest confidence)
@@ -129,13 +129,8 @@ pub enum FindingClass {
     /// Execution exceeded timeout (potential DoS)
     Hang,
     /// Unconfirmed hint requiring manual review
+    #[default]
     Heuristic,
-}
-
-impl Default for FindingClass {
-    fn default() -> Self {
-        Self::Heuristic
-    }
 }
 
 impl std::fmt::Display for FindingClass {
