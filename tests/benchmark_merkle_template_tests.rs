@@ -95,7 +95,10 @@ fn merkle_template_is_registered_without_widening_generic_aliases() {
             .collections
             .get("benchmark_generic")
             .expect("benchmark_generic collection should exist");
-        assert_eq!(generic.templates, vec!["underconstrained_strict_probe.yaml"]);
+        assert_eq!(
+            generic.templates,
+            vec!["underconstrained_strict_probe.yaml"]
+        );
 
         let merkle = registry
             .collections
@@ -104,7 +107,8 @@ fn merkle_template_is_registered_without_widening_generic_aliases() {
         assert_eq!(merkle.templates, vec!["merkle_path_binarity_probe.yaml"]);
     }
 
-    let prod_registry: BenchmarkRegistryFile = load_yaml_file("targets/benchmark_registry.prod.yaml");
+    let prod_registry: BenchmarkRegistryFile =
+        load_yaml_file("targets/benchmark_registry.prod.yaml");
     let generic_prod = prod_registry
         .collections
         .get("benchmark_prod")
@@ -146,7 +150,12 @@ fn merkle_templates_bind_path_indices_as_arrays() {
         );
         let seed_path = template["profiles"]["seeded_merkle"]["seed_inputs_path"]
             .as_str()
-            .unwrap_or_else(|| panic!("{} should define profiles.seeded_merkle.seed_inputs_path", relative));
+            .unwrap_or_else(|| {
+                panic!(
+                    "{} should define profiles.seeded_merkle.seed_inputs_path",
+                    relative
+                )
+            });
         let absolute = repo_path(seed_path);
         assert!(
             absolute.exists(),

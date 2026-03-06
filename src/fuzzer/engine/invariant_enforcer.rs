@@ -212,7 +212,10 @@ impl FuzzingEngine {
                     map.insert(format!("{}[{}]", base, idx), (offset, 1));
                     let entry = map.entry(base.to_string()).or_insert((offset, 0));
                     let start = entry.0.min(offset);
-                    let end = entry.0.saturating_add(entry.1).max(offset.saturating_add(1));
+                    let end = entry
+                        .0
+                        .saturating_add(entry.1)
+                        .max(offset.saturating_add(1));
                     *entry = (start, end.saturating_sub(start));
                 } else if let Some(open) = canonical.rfind('[') {
                     if let Some(close) = canonical.rfind(']') {
@@ -222,8 +225,10 @@ impl FuzzingEngine {
                                 map.insert(format!("{}_{}", base, idx), (offset, 1));
                                 let entry = map.entry(base.to_string()).or_insert((offset, 0));
                                 let start = entry.0.min(offset);
-                                let end =
-                                    entry.0.saturating_add(entry.1).max(offset.saturating_add(1));
+                                let end = entry
+                                    .0
+                                    .saturating_add(entry.1)
+                                    .max(offset.saturating_add(1));
                                 *entry = (start, end.saturating_sub(start));
                             }
                         }

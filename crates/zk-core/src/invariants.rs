@@ -493,7 +493,9 @@ impl SemanticOracleEngine {
             InvariantAST::Identifier(name) if name.trim() == binder_var => {
                 InvariantAST::Literal(replacement)
             }
-            InvariantAST::ArrayAccess(name, current_index) if current_index.trim() == binder_var => {
+            InvariantAST::ArrayAccess(name, current_index)
+                if current_index.trim() == binder_var =>
+            {
                 InvariantAST::ArrayAccess(name.clone(), replacement)
             }
             InvariantAST::Equals(left, right) => InvariantAST::Equals(
@@ -846,7 +848,8 @@ impl SemanticOracleEngine {
                 let (_, len) = self.input_map.get(&domain.to_lowercase()).copied()?;
                 for idx in 0..len {
                     let substituted = Self::substitute_quantifier(expr, binder_var, idx);
-                    if let Some(violation) = self.check_constraint_ast(&substituted, invariant, pair)
+                    if let Some(violation) =
+                        self.check_constraint_ast(&substituted, invariant, pair)
                     {
                         return Some(violation);
                     }
