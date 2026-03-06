@@ -17,13 +17,11 @@ impl FuzzingEngine {
         // Add interesting values from input specs
         for input in &self.config.inputs {
             for interesting in &input.interesting {
-                match FieldElement::from_hex_checked(interesting) {
-                    Ok(fe) => self.add_to_corpus(self.create_test_case_with_value(fe)),
-                    Err(err) => tracing::warn!(
-                        "Ignoring non-canonical interesting corpus seed '{}': {}",
-                        interesting,
-                        err
-                    ),
+                match Self::parse_field_element(interesting) {
+                    Some(fe) => self.add_to_corpus(self.create_test_case_with_value(fe)),
+                    None => {
+                        tracing::warn!("Ignoring invalid interesting corpus seed '{}'", interesting)
+                    }
                 }
             }
         }

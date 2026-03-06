@@ -78,6 +78,25 @@ impl FuzzingEngine {
             public_input_positions,
             self.config.inputs.len()
         );
+        let public_input_labels: Vec<String> = public_input_positions
+            .iter()
+            .filter_map(|&pos| self.config.inputs.get(pos).map(|input| input.name.clone()))
+            .collect();
+        tracing::info!(
+            "Underconstrained public-input mapping: {:?}",
+            public_input_labels
+        );
+        let path_probe_inputs =
+            Self::underconstrained_path_probe_inputs(&self.config.inputs, &public_input_positions);
+        if !path_probe_inputs.is_empty() {
+            tracing::info!(
+                "Underconstrained path-selector probe positions: {:?}",
+                path_probe_inputs
+                    .iter()
+                    .map(|(idx, name)| format!("{}:{}", idx, name))
+                    .collect::<Vec<_>>()
+            );
+        }
 
         if public_input_positions.is_empty() {
             tracing::warn!(
@@ -117,6 +136,8 @@ impl FuzzingEngine {
         };
 
         let mut test_cases = Vec::with_capacity(witness_pairs);
+        let mut non_binary_generated = 0usize;
+        let mut non_binary_generated_samples = Vec::new();
         for inputs in corpus_seed_inputs.into_iter().take(witness_pairs) {
             let mut tc = TestCase {
                 inputs,
@@ -128,6 +149,13 @@ impl FuzzingEngine {
                     if *pos < tc.inputs.len() {
                         tc.inputs[*pos] = val.clone();
                     }
+                }
+            }
+            if let Some(sample) = Self::first_non_binary_path_sample(&tc.inputs, &path_probe_inputs)
+            {
+                non_binary_generated = non_binary_generated.saturating_add(1);
+                if non_binary_generated_samples.len() < 3 {
+                    non_binary_generated_samples.push(sample);
                 }
             }
             test_cases.push(tc);
@@ -151,6 +179,13 @@ impl FuzzingEngine {
                     }
                 }
             }
+            if let Some(sample) = Self::first_non_binary_path_sample(&tc.inputs, &path_probe_inputs)
+            {
+                non_binary_generated = non_binary_generated.saturating_add(1);
+                if non_binary_generated_samples.len() < 3 {
+                    non_binary_generated_samples.push(sample);
+                }
+            }
             test_cases.push(tc);
         }
 
@@ -171,6 +206,8 @@ impl FuzzingEngine {
         let mut chunk_start = 0usize;
         let mut successful_executions = 0usize;
         let mut failed_executions = 0usize;
+        let mut non_binary_successes = 0usize;
+        let mut non_binary_success_samples = Vec::new();
 
         'execution_loop: while chunk_start < test_cases.len() {
             if self.wall_clock_timeout_reached() {
@@ -220,6 +257,15 @@ impl FuzzingEngine {
 
                 if result.success {
                     successful_executions = successful_executions.saturating_add(1);
+                    if let Some(sample) = Self::first_non_binary_path_sample(
+                        &test_cases[idx].inputs,
+                        &path_probe_inputs,
+                    ) {
+                        non_binary_successes = non_binary_successes.saturating_add(1);
+                        if non_binary_success_samples.len() < 3 {
+                            non_binary_success_samples.push(sample);
+                        }
+                    }
                     let output_hash = self.hash_output(&result.outputs);
                     output_map.entry(output_hash).or_default().push(idx);
                 } else {
@@ -240,6 +286,36 @@ impl FuzzingEngine {
             }
 
             chunk_start = chunk_end;
+        }
+
+        let collision_group_count = output_map
+            .values()
+            .filter(|indices| indices.len() > 1)
+            .count();
+        let max_collision_group_size = output_map
+            .values()
+            .map(|indices| indices.len())
+            .max()
+            .unwrap_or(0);
+        tracing::info!(
+            "Underconstrained execution summary: attempted={} successful={} failed={} collision_groups={} max_collision_group_size={} timed_out={}",
+            test_cases.len(),
+            successful_executions,
+            failed_executions,
+            collision_group_count,
+            max_collision_group_size,
+            timed_out
+        );
+        if !path_probe_inputs.is_empty() {
+            tracing::info!(
+                "Underconstrained path-selector summary: non_binary_generated={}/{} non_binary_successful={}/{} generated_samples={:?} successful_samples={:?}",
+                non_binary_generated,
+                test_cases.len(),
+                non_binary_successes,
+                successful_executions,
+                non_binary_generated_samples,
+                non_binary_success_samples
+            );
         }
 
         if !timed_out && successful_executions == 0 {
@@ -539,5 +615,54 @@ impl FuzzingEngine {
         }
 
         Some(fixed)
+    }
+
+    fn underconstrained_path_probe_inputs(
+        inputs: &[Input],
+        public_input_positions: &[usize],
+    ) -> Vec<(usize, String)> {
+        use std::collections::HashSet;
+
+        let public_positions: HashSet<usize> = public_input_positions.iter().copied().collect();
+        inputs
+            .iter()
+            .enumerate()
+            .filter(|(idx, input)| {
+                !public_positions.contains(idx) && Self::is_path_selector_input(&input.name)
+            })
+            .map(|(idx, input)| (idx, input.name.clone()))
+            .collect()
+    }
+
+    fn is_path_selector_input(name: &str) -> bool {
+        let normalized: String = name
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .flat_map(|c| c.to_lowercase())
+            .collect();
+        normalized.contains("pathindex")
+    }
+
+    fn first_non_binary_path_sample(
+        inputs: &[FieldElement],
+        path_probe_inputs: &[(usize, String)],
+    ) -> Option<String> {
+        let mut values = Vec::new();
+        for (idx, name) in path_probe_inputs {
+            let value = inputs.get(*idx)?;
+            if !Self::field_element_is_binary(value) {
+                values.push(format!("{}={}", name, value.to_decimal_string()));
+            }
+        }
+
+        if values.is_empty() {
+            None
+        } else {
+            Some(values.join(", "))
+        }
+    }
+
+    fn field_element_is_binary(value: &FieldElement) -> bool {
+        value.is_zero() || value.is_one()
     }
 }
