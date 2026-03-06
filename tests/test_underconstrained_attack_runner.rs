@@ -137,3 +137,101 @@ async fn underconstrained_runner_uses_external_witness_seeds_directly() {
             .collect::<Vec<_>>()
     );
 }
+
+#[tokio::test]
+async fn underconstrained_runner_adds_behavioral_confirmation_for_non_binary_path_selectors() {
+    let seed_file = NamedTempFile::new().expect("seed file");
+    std::fs::write(
+        seed_file.path(),
+        r#"[
+  {"root": "5", "leaf": "2", "path_indices": ["2", "3"]},
+  {"root": "5", "leaf": "9", "path_indices": ["4", "7"]}
+]
+"#,
+    )
+    .expect("write seed file");
+
+    let mut config = build_underconstrained_config(
+        "tests/fixtures/underconstrained_path_selector_collision.circom",
+        "main",
+    );
+    config.inputs = vec![
+        Input {
+            name: "root".to_string(),
+            input_type: "field".to_string(),
+            fuzz_strategy: FuzzStrategy::Random,
+            constraints: vec![],
+            interesting: vec![],
+            length: None,
+        },
+        Input {
+            name: "leaf".to_string(),
+            input_type: "field".to_string(),
+            fuzz_strategy: FuzzStrategy::Random,
+            constraints: vec![],
+            interesting: vec![],
+            length: None,
+        },
+        Input {
+            name: "path_indices".to_string(),
+            input_type: "array<field>".to_string(),
+            fuzz_strategy: FuzzStrategy::Random,
+            constraints: vec![],
+            interesting: vec![],
+            length: Some(2),
+        },
+    ];
+    config.campaign.parameters.additional.insert(
+        "fuzzing_iterations".to_string(),
+        serde_yaml::Value::Number(1.into()),
+    );
+    config.campaign.parameters.additional.insert(
+        "fuzzing_timeout_seconds".to_string(),
+        serde_yaml::Value::Number(5.into()),
+    );
+    config.campaign.parameters.additional.insert(
+        "symbolic_enabled".to_string(),
+        serde_yaml::Value::Bool(false),
+    );
+    config.campaign.parameters.additional.insert(
+        "seed_inputs_path".to_string(),
+        serde_yaml::Value::String(seed_file.path().display().to_string()),
+    );
+    config.campaign.parameters.additional.insert(
+        "circom_build_dir".to_string(),
+        serde_yaml::Value::String(
+            "/tmp/zkfuzz_tests/underconstrained_path_selector_collision".to_string(),
+        ),
+    );
+
+    let mut engine = FuzzingEngine::new(config, Some(29), 1).expect("engine init should succeed");
+    let report = engine.run(None).await.expect("run should succeed");
+
+    let attack_types: Vec<_> = report
+        .findings
+        .iter()
+        .map(|finding| finding.attack_type.clone())
+        .collect();
+    assert!(
+        attack_types.contains(&AttackType::Underconstrained),
+        "expected underconstrained finding, found {:?}",
+        attack_types
+    );
+    assert!(
+        attack_types.contains(&AttackType::Boundary),
+        "expected behavioral confirmation finding, found {:?}",
+        attack_types
+    );
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.description.contains("Correlation: HIGH")),
+        "expected high-confidence correlated finding, found {:?}",
+        report
+            .findings
+            .iter()
+            .map(|finding| finding.description.clone())
+            .collect::<Vec<_>>()
+    );
+}

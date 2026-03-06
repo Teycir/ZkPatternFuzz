@@ -87,7 +87,6 @@ Current focused rerun status on the current tree:
   - suite artifact: `artifacts/benchmark_runs_merkle_diagnostic_no_rlimit_as/benchmark_20260306_015923/summary.json`
   - scan artifact: `artifacts/benchmark_runs_merkle_diagnostic_no_rlimit_as/scan_outputs/merkle_diagnostic/merkle_unconstrained/trial_1_seed_42/.scan_run_artifacts/scan_run20260306_015826/auto__merkle_path_binarity_probe/report.json`
 - the suite completed successfully, reached the attack stage, and recorded `1/1` detections
-- high-confidence detection is still `0/1`, so this focused rerun improves recall but does not yet improve the published high-confidence number
 - the critical signal is a real `underconstrained` finding, not just a generic crash or hint-only artifact
 - underconstrained execution summary from the diagnostic rerun:
   - `attempted=128`
@@ -97,6 +96,21 @@ Current focused rerun status on the current tree:
   - `non_binary_generated=40/128`
   - `non_binary_successful=6/28`
 
+Current stable high-confidence diagnostic status:
+
+- after adding behavioral corroboration for accepted non-binary path selectors, the focused Merkle diagnostic now reaches high-confidence detection:
+  - single-trial confirmation artifact: `artifacts/benchmark_runs_merkle_diagnostic_high_conf/benchmark_20260306_020809/summary.json`
+  - two-trial stability artifact: `artifacts/benchmark_runs_merkle_diagnostic_high_conf_stability/benchmark_20260306_021012/summary.json`
+- the two-trial stability rerun recorded:
+  - `2/2` detections
+  - `2/2` high-confidence detections
+  - `100%` completion
+  - `100%` attack-stage reach
+- the new high-confidence path comes from cross-group corroboration:
+  - structural evidence: `underconstrained` identical-output witness collision
+  - behavioral evidence: accepted non-binary `path_indices` under the same fixed public root
+- this means the target now has a stable high-confidence focused diagnostic on the current tree, even though the top-level published benchmark metrics in this document are still the older fast-regression baseline
+
 What changed between the miss and the detection:
 
 - benchmark suite routing now assigns `merkle_unconstrained` to `campaigns/benchmark/patterns/merkle_path_binarity_probe.yaml` in default/dev runs and `merkle_path_binarity_probe_prod.yaml` in prod-depth runs
@@ -104,6 +118,7 @@ What changed between the miss and the detection:
 - reconciled indexed inputs such as `path_indices[0]` are now aliased back to their base array names for invariant evaluation and scalarized when the executor-derived schema flattens arrays into individual field slots
 - underconstrained attack seeding now loads direct witness seeds from `campaigns/benchmark/seed_inputs/merkle_unconstrained_seed_inputs.json` instead of relying only on corpus-derived recovery
 - Circom per-exec isolation no longer applies a default `RLIMIT_AS` cap when the operator has not explicitly set `isolation_memory_limit_mb` or `isolation_memory_limit_bytes`; this removes the prior `WebAssembly.instantiate(): Out of memory` worker failure seen under isolated witness generation
+- underconstrained collision reporting now emits a paired behavioral-domain finding when the same accepted witness uses non-binary Merkle path selectors, allowing cross-group correlation to promote the issue to `HIGH` confidence instead of leaving it as a structural-only `LOW`
 
 Remaining limitations:
 
@@ -111,12 +126,12 @@ Remaining limitations:
 - the focused rerun is diagnostic, not yet a replacement for the full `vulnerable_ground_truth` benchmark publication
 - `100/128` underconstrained candidate executions still failed, mostly due to circuit-level assertion failures on invalid witness candidates
 - boundary-path execution for this target is still noisy under the reconciled `8`-signal input shape
-- high-confidence detection remains `0%` in the focused rerun, so the credibility gap is narrowed but not closed
+- the focused diagnostic is now high-confidence, but that result has only been validated on the dedicated Merkle-only suite, not yet on the republished full vulnerable benchmark
 
 Next required work:
 
 - rerun the full vulnerable benchmark suite on the current tree so the published top-line recall numbers reflect the Merkle detection fix
-- reduce invalid witness-candidate generation for this target so more non-binary Merkle paths survive execution and improve confidence/precision under deeper settings
+- reduce invalid witness-candidate generation for this target so more non-binary Merkle paths survive execution and the high-confidence result remains efficient under deeper, broader suite settings
 
 ## Source Artifacts
 

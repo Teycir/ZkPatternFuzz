@@ -376,6 +376,15 @@ impl FuzzingEngine {
                 .collect();
 
             if witnesses.len() > 1 && self.witnesses_are_different_refs(&witnesses) {
+                let Some((primary_witness, secondary_witness, non_binary_path_sample)) =
+                    Self::select_collision_reporting_witnesses(&witnesses, &path_probe_inputs)
+                else {
+                    continue;
+                };
+                let public_inputs: Vec<FieldElement> = public_input_positions
+                    .iter()
+                    .filter_map(|&pos| primary_witness.inputs.get(pos).cloned())
+                    .collect();
                 let finding = Finding {
                     attack_type: AttackType::Underconstrained,
                     severity: Severity::Critical,
@@ -384,12 +393,9 @@ impl FuzzingEngine {
                         witnesses.len()
                     ),
                     poc: super::ProofOfConcept {
-                        witness_a: witnesses[0].inputs.clone(),
-                        witness_b: Some(witnesses[1].inputs.clone()),
-                        public_inputs: public_input_positions
-                            .iter()
-                            .filter_map(|&pos| witnesses[0].inputs.get(pos).cloned())
-                            .collect(),
+                        witness_a: primary_witness.inputs.clone(),
+                        witness_b: Some(secondary_witness.inputs.clone()),
+                        public_inputs: public_inputs.clone(),
                         proof: None,
                     },
                     location: None,
@@ -400,6 +406,31 @@ impl FuzzingEngine {
 
                 if let Some(p) = progress {
                     p.log_finding("CRITICAL", &finding.description);
+                }
+
+                if let Some(path_sample) = non_binary_path_sample {
+                    let boundary_finding = Finding {
+                        attack_type: AttackType::Boundary,
+                        severity: Severity::High,
+                        description: format!(
+                            "Circuit accepted non-binary path selector values under fixed public inputs while preserving identical output: {}",
+                            path_sample
+                        ),
+                        poc: super::ProofOfConcept {
+                            witness_a: primary_witness.inputs.clone(),
+                            witness_b: Some(secondary_witness.inputs.clone()),
+                            public_inputs,
+                            proof: None,
+                        },
+                        location: None,
+                        class: None,
+                    };
+
+                    self.with_findings_write(|store| store.push(boundary_finding.clone()))?;
+
+                    if let Some(p) = progress {
+                        p.log_finding("HIGH", &boundary_finding.description);
+                    }
                 }
             }
         }
@@ -767,5 +798,38 @@ impl FuzzingEngine {
         );
 
         Ok(combined)
+    }
+
+    fn select_collision_reporting_witnesses<'a>(
+        witnesses: &[&'a TestCase],
+        path_probe_inputs: &[(usize, String)],
+    ) -> Option<(&'a TestCase, &'a TestCase, Option<String>)> {
+        let mut fallback_pair: Option<(&TestCase, &TestCase)> = None;
+
+        for (idx, witness_a) in witnesses.iter().enumerate() {
+            for witness_b in witnesses.iter().skip(idx + 1) {
+                if witness_a.inputs == witness_b.inputs {
+                    continue;
+                }
+
+                let witness_a_path_sample =
+                    Self::first_non_binary_path_sample(&witness_a.inputs, path_probe_inputs);
+                if witness_a_path_sample.is_some() {
+                    return Some((witness_a, witness_b, witness_a_path_sample));
+                }
+
+                let witness_b_path_sample =
+                    Self::first_non_binary_path_sample(&witness_b.inputs, path_probe_inputs);
+                if witness_b_path_sample.is_some() {
+                    return Some((witness_b, witness_a, witness_b_path_sample));
+                }
+
+                if fallback_pair.is_none() {
+                    fallback_pair = Some((witness_a, witness_b));
+                }
+            }
+        }
+
+        fallback_pair.map(|(witness_a, witness_b)| (witness_a, witness_b, None))
     }
 }

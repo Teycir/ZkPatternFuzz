@@ -30,11 +30,13 @@ Rough monthly development summary for the current unreleased line.
 - Underconstrained witness seeding now loads direct external seeds for Merkle diagnostics instead of relying only on corpus recovery
 - Circom per-exec isolation now leaves `RLIMIT_AS` unset by default unless the operator explicitly configures an isolation memory limit, avoiding isolated Node/WASM witness-worker OOMs
 - Added regression coverage proving the new Circom isolation default still preserves explicit memory-cap overrides
+- Underconstrained collision reporting now emits a paired behavioral-domain finding when non-binary Merkle path selectors are accepted, enabling cross-group confidence promotion for the same witness
+- Added regression coverage proving accepted non-binary path selector witnesses produce `HIGH` confidence correlated findings
 
 ### Notes
 - The current published ground-truth benchmark is intentionally shallow (`50` iterations, `10s` timeout) and should be treated as a fast regression snapshot, not a production-depth effectiveness measurement
-- `merkle_unconstrained` remains missed in the published fast benchmark at the top of `GROUND_TRUTH_REPORT.md`, but a newer focused diagnostic rerun on the current tree now detects it via a critical `underconstrained` finding
-- The focused Merkle rerun still lands at `0%` high-confidence detection and shows heavy invalid-candidate attrition, so the next work is full-suite republishing plus better satisfiable witness generation for that target
+- `merkle_unconstrained` remains missed in the published fast benchmark at the top of `GROUND_TRUTH_REPORT.md`, but newer focused diagnostic reruns on the current tree now detect it at `HIGH` confidence
+- A dedicated two-trial Merkle stability rerun now records `2/2` high-confidence detections on the current tree, while still showing heavy invalid-candidate attrition that should be reduced before the next full-suite republish
 
 ### 2026-03
 
