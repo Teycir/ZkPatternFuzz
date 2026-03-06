@@ -54,16 +54,27 @@ Operator docs live under [docs/INDEX.md](docs/INDEX.md). Validation artifacts an
 
 ## Comparison With Related Tools
 
-These tools are complementary in practice. ZkPatternFuzz is aimed at ZK circuit security workflows, while the others are strongest in EVM fuzzing, symbolic testing, or static analysis.
+These tools are complementary rather than interchangeable. For ZK work, the important distinction is whether a tool is doing runtime discovery, static analysis, or formal safety verification.
 
-| Tool | Primary scope | Core method | ZK circuit focus | Orchestration model | Best fit |
-| --- | --- | --- | --- | --- | --- |
-| `ZkPatternFuzz` | ZK circuits and ZK-system targets | Pattern-guided fuzzing, backend readiness checks, replay/evidence workflow | Native support for Circom, Cairo, Noir, and Halo2 targets | Built-in single-target scans plus registry/catalog batch runs | ZK audits, regression lanes, and proof-oriented triage |
-| `Echidna` | Solidity / EVM contracts | Property-based fuzzing with optional coverage guidance and shrinking | No, EVM-centric | Per-project fuzz campaigns driven by invariants and config | Solidity invariant testing |
-| `Medusa` | Solidity / EVM contracts | Parallel, coverage-guided mutational fuzzing | No, EVM-centric | Worker-based fuzz campaigns with corpus growth | Larger EVM fuzz workloads |
-| `Halmos` | Solidity / Foundry EVM tests | Symbolic testing | No, EVM-centric | Test-driven symbolic runs | Solver-backed exploration of EVM properties |
-| `Foundry / Forge` | Solidity development and testing | Unit, fuzz, and invariant testing | EVM-centric | Developer test runner inside Solidity repos | Fast app-dev feedback loops and contract test suites |
-| `Slither` | Solidity and Vyper review | Static analysis | No | Static CI / audit pass, not runtime fuzzing | Fast detector-based triage and code comprehension |
+### ZK-Native Tools
+
+| Tool | Primary scope | Analysis style | Main strength | Best fit |
+| --- | --- | --- | --- | --- |
+| `ZkPatternFuzz` | Circom, Cairo, Noir, Halo2, and batch ZK target registries | Pattern-guided fuzzing plus replay/evidence orchestration | Cross-backend discovery with reproducible scan, batch, and replay workflows | ZK audits, regression lanes, and operator-driven triage |
+| [`Picus`](https://docs.veridise.com/picus/) | Circom / R1CS safety analysis | Formal verification | Proves or refutes weak/strong safety and can produce concrete counterexamples for underconstraint bugs | Confirming or disproving safety properties after discovery |
+| [`Circomspect`](https://github.com/trailofbits/circomspect) | Circom source code | Static analysis and linting | Fast source-level checks for common Circom mistakes and vulnerability patterns | Early CI linting and developer feedback before heavy runs |
+| [`CIVER`](https://github.com/costa-group/circom_civer) | Circom circuits and safety specifications | SMT-backed formal verification | Checks weak safety, tags, and pre/postconditions with modular analysis | Determinism and specification checking in Circom-heavy codebases |
+| [`circom --inspect`](https://docs.circom.io/circom-language/code-quality/inspect/) | Circom compilation flow | Built-in compiler inspection | Cheap first-pass warnings for potentially underconstrained or unused signals | Baseline hygiene checks during everyday circuit development |
+
+### Adjacent Smart Contract And Audit Tools
+
+| Tool | Primary scope | Analysis style | Main strength | Best fit |
+| --- | --- | --- | --- | --- |
+| `Echidna` | Solidity / EVM contracts | Property-based fuzzing | Invariant-driven contract fuzzing with shrinking | Solidity invariant testing |
+| `Medusa` | Solidity / EVM contracts | Coverage-guided mutational fuzzing | Parallel worker-based contract fuzzing | Larger EVM fuzz workloads |
+| `Halmos` | Solidity / Foundry EVM tests | Symbolic testing | Solver-backed exploration of EVM properties | Targeted proof-style checks for Solidity tests |
+| `Foundry / Forge` | Solidity development and testing | Unit, fuzz, and invariant testing | Tight developer loop inside Solidity repos | App-dev feedback loops and contract test suites |
+| `Slither` | Solidity and Vyper review | Static analysis | Fast detector-based audit triage and code comprehension | Static review and CI policy gates |
 
 ## Requirements
 
