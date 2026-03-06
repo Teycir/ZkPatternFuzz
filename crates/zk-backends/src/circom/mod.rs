@@ -2278,18 +2278,20 @@ impl CircomTarget {
         if !cache_path.exists() {
             return Ok(false);
         }
-        // The metadata cache must track the built artifact bundle, not the source file mtime.
-        // Fresh checkouts can reorder checked-in timestamps and should not force a snarkjs probe
-        // when callers explicitly asked to reuse prebuilt artifacts.
-        if !Self::is_cache_fresh(
-            cache_path,
-            &[r1cs_path],
-            if sym_path.exists() {
-                Some(sym_path)
-            } else {
-                None
-            },
-        ) {
+        // When callers explicitly request artifact reuse, trust the checked-in build bundle and
+        // avoid mtime-based invalidation. Fresh checkouts can reorder file timestamps and would
+        // otherwise spuriously fall back to a snarkjs metadata probe.
+        if !self.skip_compile_if_artifacts
+            && !Self::is_cache_fresh(
+                cache_path,
+                &[r1cs_path],
+                if sym_path.exists() {
+                    Some(sym_path)
+                } else {
+                    None
+                },
+            )
+        {
             return Ok(false);
         }
 

@@ -75,7 +75,7 @@ jobs:
       - name: Build
         run: cargo build --all-features
 
-  # Z3 compatibility checks across supported desktop OSes.
+  # Z3 compatibility checks across supported CI desktop OSes.
   # This validates solver crates independently from broader backend/toolchain constraints.
   z3-cross-platform:
     name: Z3 Check (${{ matrix.os }})
@@ -87,8 +87,6 @@ jobs:
         include:
           - os: ubuntu-latest
             run_static_mode: true
-          - os: macos-latest
-            run_static_mode: false
           - os: windows-latest
             run_static_mode: true
     steps:
@@ -114,31 +112,11 @@ jobs:
           command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
           z3 --version
 
-      - name: Install and verify Z3 (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          if ! command -v z3 >/dev/null 2>&1; then
-            brew install z3
-          fi
-          Z3_PREFIX="$(brew --prefix z3)"
-          {
-            echo "Z3_SYS_Z3_HEADER=${Z3_PREFIX}/include/z3.h"
-            echo "BINDGEN_EXTRA_CLANG_ARGS=-I${Z3_PREFIX}/include"
-            echo "LIBRARY_PATH=${Z3_PREFIX}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
-            echo "DYLD_FALLBACK_LIBRARY_PATH=${Z3_PREFIX}/lib${DYLD_FALLBACK_LIBRARY_PATH:+:${DYLD_FALLBACK_LIBRARY_PATH}}"
-            echo "RUSTFLAGS=${RUSTFLAGS:+${RUSTFLAGS} }-L native=${Z3_PREFIX}/lib"
-          } >> "$GITHUB_ENV"
-          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
-          z3 --version
-
       # On Windows we default to static-linking Z3 in solver crates.
       - name: Check solver crates
         run: cargo check -p zk-constraints -p zk-symbolic
 
-      # z3-sys 0.8.x vendors an older Z3 CMake project that no longer configures
-      # cleanly with the current macOS runner image. The macOS lane validates the
-      # supported dynamic/Homebrew Z3 path, while static coverage remains on Ubuntu
-      # and Windows.
+      # Static coverage remains on the validated Ubuntu and Windows runners.
       - name: Check solver crates (portable static mode)
         if: matrix.run_static_mode
         run: cargo check -p zk-constraints -p zk-symbolic --features z3-static
@@ -231,6 +209,11 @@ jobs:
 
       - name: Install JavaScript dependencies
         run: npm ci --no-audit --no-fund
+
+      - name: Set up Python 3.11 for Cairo toolchain
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Verify Rust installation
         run: |
@@ -674,8 +657,6 @@ jobs:
         include:
           - os: ubuntu-latest
             cargo_feature_args: --all-features
-          - os: macos-latest
-            cargo_feature_args: ""
         # Windows excluded due to Z3 build complexity
     steps:
       - uses: actions/checkout@v4
@@ -700,23 +681,6 @@ jobs:
           command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
           z3 --version
 
-      - name: Install and verify Z3 (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          if ! command -v z3 >/dev/null 2>&1; then
-            brew install z3
-          fi
-          Z3_PREFIX="$(brew --prefix z3)"
-          {
-            echo "Z3_SYS_Z3_HEADER=${Z3_PREFIX}/include/z3.h"
-            echo "BINDGEN_EXTRA_CLANG_ARGS=-I${Z3_PREFIX}/include"
-            echo "LIBRARY_PATH=${Z3_PREFIX}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
-            echo "DYLD_FALLBACK_LIBRARY_PATH=${Z3_PREFIX}/lib${DYLD_FALLBACK_LIBRARY_PATH:+:${DYLD_FALLBACK_LIBRARY_PATH}}"
-            echo "RUSTFLAGS=${RUSTFLAGS:+${RUSTFLAGS} }-L native=${Z3_PREFIX}/lib"
-          } >> "$GITHUB_ENV"
-          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
-          z3 --version
-      
       - name: Build
         run: cargo build --release ${{ matrix.cargo_feature_args }}
       

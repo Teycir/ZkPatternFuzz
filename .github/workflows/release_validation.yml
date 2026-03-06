@@ -175,6 +175,11 @@ jobs:
       - name: Install JavaScript dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Set up Python 3.11 for Cairo toolchain
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Verify Rust installation
         run: |
           rustc --version || exit 1

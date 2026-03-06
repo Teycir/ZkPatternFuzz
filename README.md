@@ -130,6 +130,8 @@ cargo test
 
 `npm ci` installs the small dependency surface used by local Circom fixtures and benchmark lanes. `node_modules/` is intentionally ignored and should not be committed.
 
+Validated CI coverage currently targets Ubuntu and Windows runners. macOS is intentionally excluded from the supported CI/build matrix until its toolchain path is restored.
+
 Generate local API docs when needed:
 
 ```bash

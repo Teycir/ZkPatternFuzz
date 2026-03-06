@@ -12,6 +12,18 @@ CAIRO_LANG_VERSION="${CAIRO_LANG_VERSION:-0.14.0.1}"
 BIN_DIR="${HOME}/.local/bin"
 CACHE_DIR="${HOME}/.local/share/zkpatternfuzz-ci"
 TMP_DIR="${RUNNER_TEMP:-/tmp}/zkpatternfuzz-ci"
+PYTHON_BIN="${PYTHON_BIN:-}"
+
+if [[ -z "$PYTHON_BIN" ]]; then
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+  else
+    echo "python interpreter not found in PATH" >&2
+    exit 1
+  fi
+fi
 
 mkdir -p "$BIN_DIR" "$CACHE_DIR" "$TMP_DIR"
 export PATH="$BIN_DIR:$HOME/.cargo/bin:$PATH"
@@ -27,7 +39,7 @@ if [[ "$PROFILE" == "full" ]] \
   && ! command -v bwrap >/dev/null 2>&1; then
   apt_packages+=(bubblewrap)
 fi
-if [[ "$PROFILE" == "full" ]] && ! python3 -m venv --help >/dev/null 2>&1; then
+if [[ "$PROFILE" == "full" ]] && ! "$PYTHON_BIN" -m venv --help >/dev/null 2>&1; then
   apt_packages+=(python3-venv)
 fi
 
@@ -137,7 +149,7 @@ install_cairo_lang() {
   download \
     "https://github.com/starkware-libs/cairo-lang/releases/download/v${CAIRO_LANG_VERSION}/cairo-lang-${CAIRO_LANG_VERSION}.zip" \
     "$archive"
-  python3 -m venv "$venv_dir"
+  "$PYTHON_BIN" -m venv "$venv_dir"
   "$venv_dir/bin/python" -m pip install --upgrade pip setuptools wheel
   "$venv_dir/bin/python" -m pip install "$archive"
 
