@@ -24,6 +24,8 @@ Rough monthly development summary for the current unreleased line.
 - Hardened repo hygiene defaults so root `.env`, `.z3-trace`, and `node_modules/` are now blocked by `zkf_checks repo-hygiene`
 - Added regression coverage proving `.env.example` remains allowed while blocked root artifacts fail the hygiene gate
 - Refreshed operator-facing docs and test READMEs to match the current runtime and validation workflow
+- Republished the current-tree fast benchmark in `artifacts/benchmark_runs_fast_current_tree/benchmark_20260306_021602`, which measured `10.0%` vulnerable recall, `0.0%` high-confidence recall, `100.0%` precision, and `0.0%` safe false-positive rates under the unchanged `50`-iteration / `10s` profile
+- Published a production-depth current-tree benchmark in `artifacts/benchmark_runs_prod_current_tree_p8/benchmark_20260306_025706`, which measured `20.0%` vulnerable recall, `0.0%` high-confidence recall, `80.0%` completion, and `80.0%` attack-stage reach under `5000` iterations / `300s`
 - Routed `merkle_unconstrained` through dedicated Merkle benchmark templates instead of the generic strict probe and added regression coverage for that suite/catalog wiring
 - Fixed quantified-array invariant evaluation for `forall` constraints in both semantic and fuzzer-side invariant engines
 - Normalized reconciled indexed inputs so flattened executor schemas preserve base-array invariant checks and scalar field semantics
@@ -34,8 +36,10 @@ Rough monthly development summary for the current unreleased line.
 - Added regression coverage proving accepted non-binary path selector witnesses produce `HIGH` confidence correlated findings
 
 ### Notes
-- The current published ground-truth benchmark is intentionally shallow (`50` iterations, `10s` timeout) and should be treated as a fast regression snapshot, not a production-depth effectiveness measurement
-- `merkle_unconstrained` remains missed in the published fast benchmark at the top of `GROUND_TRUTH_REPORT.md`, but newer focused diagnostic reruns on the current tree now detect it at `HIGH` confidence
+- The current-tree fast benchmark remains intentionally shallow (`50` iterations, `10s` timeout) and should be treated as a fast regression snapshot, not a production-depth effectiveness measurement
+- The republished current-tree fast benchmark is now visibly setup-bound across several vulnerable targets; multiple runs log `Global wall-clock timeout reached before attack Underconstrained`, so the `10s` profile is no longer representative of broad effectiveness
+- The production-depth publication improves raw vulnerable recall to `20.0%`, but it still records `0.0%` high-confidence vulnerable recall, `70.0%` vulnerable-suite completion, and `20.0%` raw safe-suite detections (`range_proof_secure` low-confidence `soundness` hits)
+- `merkle_unconstrained` remains missed in both the published current-tree fast snapshot and the published production-depth full-suite benchmark, even though newer focused diagnostic reruns on the current tree detect it at `HIGH` confidence
 - A dedicated two-trial Merkle stability rerun now records `2/2` high-confidence detections on the current tree, while still showing heavy invalid-candidate attrition that should be reduced before the next full-suite republish
 
 ### 2026-03
