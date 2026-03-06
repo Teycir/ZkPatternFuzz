@@ -17,11 +17,14 @@ ZkPatternFuzz is a Rust-based security testing framework for zero-knowledge syst
 - [Overview](#overview)
 - [Use Cases](#use-cases)
 - [Comparison With Related Tools](#comparison-with-related-tools)
+- [Mode 2 Evidence Campaigns](#mode-2-evidence-campaigns)
 - [Requirements](#requirements)
 - [Build And Validation](#build-and-validation)
 - [Runtime Environment](#runtime-environment)
 - [Quick Start](#quick-start)
 - [Standardized Routine Runs](#standardized-routine-runs)
+- [Circuit Generation](#circuit-generation)
+- [Plugin API](#plugin-api)
 - [Direct Batch Runs](#direct-batch-runs)
 - [Local Circom Bootstrap](#local-circom-bootstrap)
 - [Benchmarks And Repo Checks](#benchmarks-and-repo-checks)
@@ -35,11 +38,14 @@ ZkPatternFuzz is a Rust-based security testing framework for zero-knowledge syst
 - `zkpatternfuzz`: batch execution across a target registry and pattern catalog.
 - `zk0d_benchmark`: repeated benchmark-suite runner.
 - `zkf_checks`: repository hygiene and policy checks.
+- `zk-circuit-gen`: adversarial circuit generation, compiler differential testing, and semantic-intent matching for hostile target creation.
 
 The project is built for proof-oriented security work. A finding is only useful if it ends in one of two states:
 
 - deterministic exploit replay with reproducible artifacts, or
 - bounded non-exploitability evidence with clear assumptions.
+
+The main moat is not just "fuzzing." It is the accumulation of operator-reviewed security knowledge as reusable assets: YAML attack patterns, bundled CVE fixtures, benchmark suites, and replay-oriented evidence bundles. That lets one audit's edge cases become the next audit's default checks.
 
 Operator docs live under [docs/INDEX.md](docs/INDEX.md). Validation artifacts and replay bundles are stored under `artifacts/`.
 
@@ -51,6 +57,7 @@ Operator docs live under [docs/INDEX.md](docs/INDEX.md). Validation artifacts an
 - Generate replayable findings and proof-status artifacts instead of stopping at hint-only detections.
 - Preflight backend readiness, key setup, and local tooling before spending time on long fuzzing campaigns.
 - Track batch outcomes across aliases, catalogs, and timestamped artifact bundles during repeated security work.
+- Generate adversarial circuits and compiler-regression corpora instead of relying only on hand-written benchmark targets.
 
 ## Comparison With Related Tools
 
@@ -75,6 +82,17 @@ These tools are complementary rather than interchangeable. For ZK work, the impo
 | `Halmos` | Solidity / Foundry EVM tests | Symbolic testing | Solver-backed exploration of EVM properties | Targeted proof-style checks for Solidity tests |
 | `Foundry / Forge` | Solidity development and testing | Unit, fuzz, and invariant testing | Tight developer loop inside Solidity repos | App-dev feedback loops and contract test suites |
 | `Slither` | Solidity and Vyper review | Static analysis | Fast detector-based audit triage and code comprehension | Static review and CI policy gates |
+
+## Mode 2 Evidence Campaigns
+
+`campaigns/mode2/patterns/` is the deep single-target evidence lane. These patterns are heavier than the lightweight benchmark templates and are meant to surface high-signal single-circuit bugs before you move to Mode 3 chain fuzzing.
+
+Current Mode 2 bundles include:
+
+- `underconstrained_witness_deep.yaml`: deep witness-pair search plus semantic cross-checks
+- `soundness_forge_deep.yaml`: deeper proof-forgery and verification-soundness pressure
+
+Use Mode 2 when you want stronger single-circuit evidence and broader attack coverage than the standard benchmark templates, but you do not yet need multi-step protocol chains. For chain-focused work, step up to Mode 3 and the workflow in [docs/CHAIN_FUZZING_GUIDE.md](docs/CHAIN_FUZZING_GUIDE.md).
 
 ## Requirements
 
@@ -169,6 +187,32 @@ The target bindings for those wrappers are the three `.env` keys below:
 - `ZKF_STD_TARGET_DEEP`
 
 The operational contract for these profiles is documented in [docs/STANDARDIZED_RUN_PROFILES.md](docs/STANDARDIZED_RUN_PROFILES.md).
+
+## Circuit Generation
+
+`zk-circuit-gen` is the circuit-generation and compiler-testing lab that sits alongside the fuzzer. It generates hostile circuits, mutation-based corpora, semantic-intent checks, compiler crash probes, and differential compiler/version matrices across Circom, Noir, Halo2, and Cairo.
+
+Useful entrypoints:
+
+```bash
+cargo run -q -p zk-circuit-gen --example generate_bulk_corpus -- --help
+cargo run -q -p zk-circuit-gen --example generate_adversarial_corpus -- --help
+cargo run -q -p zk-circuit-gen --example run_differential_version_matrix -- --help
+cargo run -q -p zk-circuit-gen --example run_compiler_crash_detector -- --help
+```
+
+Use [docs/CIRCUIT_GEN.md](docs/CIRCUIT_GEN.md) for the operator-facing overview and artifact layout.
+
+## Plugin API
+
+External attack plugins are supported through the `attack-plugins` feature and the example crate `crates/zk-attacks-plugin-example`. The short contract is:
+
+- build the host with `--features attack-plugins`
+- ship plugins as `cdylib`
+- export `zk_attacks_plugins`
+- implement `AttackPlugin` metadata plus an `Attack` implementation
+
+Use [docs/PLUGIN_API.md](docs/PLUGIN_API.md) for the minimal contract and [docs/PLUGIN_SYSTEM_GUIDE.md](docs/PLUGIN_SYSTEM_GUIDE.md) for discovery, strict-mode behavior, and safety notes.
 
 ## Direct Batch Runs
 
@@ -278,11 +322,14 @@ Validation references:
 
 - [docs/VALIDATION_EVIDENCE.md](docs/VALIDATION_EVIDENCE.md)
 - [docs/GROUND_TRUTH_REPORT.md](docs/GROUND_TRUTH_REPORT.md)
+- [CVErefs/README.md](CVErefs/README.md)
 
 Historical context:
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - [ROADMAP.md](ROADMAP.md)
+- [docs/CIRCUIT_GEN.md](docs/CIRCUIT_GEN.md)
+- [docs/PLUGIN_API.md](docs/PLUGIN_API.md)
 
 ## Attribution
 

@@ -1,50 +1,41 @@
-# CVE Circuit References
+# CVE Reference Catalog
 
-This directory contains references to circuits used for CVE regression testing.
+This directory is the operator-facing index for the curated CVE-style regression set. The authoritative metadata lives in [`templates/known_vulnerabilities.yaml`](../templates/known_vulnerabilities.yaml), while the bundled regression fixtures under [`tests/cve_fixtures`](../tests/cve_fixtures) are the supported in-repo execution path.
 
-## External Circuit Locations
+`circuit_references.json` is historical provenance for older external target locations. It is not the primary execution path for current regression tests.
 
-The actual circuit files are located on the external drive:
-```
-/media/elements/Repos/zk0d/
-├── cat3_privacy/
-│   ├── tornado-core/circuits/
-│   │   ├── withdraw.circom
-│   │   └── merkleTree.circom
-│   └── semaphore/packages/circuits/src/
-│       └── semaphore.circom
-└── circuits/
-    ├── range_proof.circom
-    └── division.circom
-```
+## What Is Authoritative Today
 
-## Status
+- vulnerability metadata: [`templates/known_vulnerabilities.yaml`](../templates/known_vulnerabilities.yaml)
+- regression execution: [`tests/cve_regression_runner.rs`](../tests/cve_regression_runner.rs)
+- portable fixtures: [`tests/cve_fixtures`](../tests/cve_fixtures)
+- reusable CVE-style pattern catalog: [`campaigns/cve/patterns`](../campaigns/cve/patterns)
 
-| CVE ID | Circuit | Status |
-|--------|---------|--------|
-| ZK-CVE-2022-001 | tornado-core/withdraw.circom | External |
-| ZK-CVE-2022-002 | semaphore/semaphore.circom | External |
-| ZK-CVE-2021-001 | tornado-core/merkleTree.circom | External |
-| ZK-CVE-2021-002 | tornado-core/merkleTree.circom | External |
-| ZK-CVE-2023-001 | circuits/range_proof.circom | External |
-| ZK-CVE-2023-002 | circuits/division.circom | External |
-| ZK-CVE-2022-003 | tornado-core/withdraw.circom | External |
-| ZK-CVE-2023-003 | semaphore/semaphore.circom | External |
+## Core Bundled Regression Catalog
 
-## Testing
+| CVE ID | Vulnerability Class | Oracle / Attack Type | Pattern / Fixture | Framework | Detection Status |
+| --- | --- | --- | --- | --- | --- |
+| `ZK-CVE-2022-001` | EdDSA signature malleability | `signature_malleability` / `malleability` | `tests/cve_fixtures/signature_canonical_guard.circom` | `circom` | bundled regression fixture |
+| `ZK-CVE-2022-002` | Nullifier collision via weak hash | `nullifier_collision` / `collision` | `tests/cve_fixtures/nullifier_uniqueness_smoke.circom` | `circom` | bundled regression fixture |
+| `ZK-CVE-2021-001` | Merkle path length bypass | `merkle_soundness` / `boundary` | `tests/cve_fixtures/merkle_path_length_guard.circom` | `circom` | bundled regression fixture |
+| `ZK-CVE-2021-002` | Merkle sibling-order ambiguity | `merkle_soundness` / `underconstrained` | `tests/cve_fixtures/merkle_binary_indices_guard.circom` | `circom` | bundled regression fixture |
+| `ZK-CVE-2023-001` | Field overflow in range proofs | `arithmetic_overflow` / `arithmetic_overflow` | `tests/cve_fixtures/range_upper_bound_guard.circom` | `circom` | bundled regression fixture |
+| `ZK-CVE-2023-002` | Division by zero not constrained | `boundary` / `boundary` | `tests/cve_fixtures/division_denominator_guard.circom` | `circom` | bundled regression fixture |
+| `ZK-CVE-2022-003` | Timing side-channel in witness generation | `timing_side_channel` / `timing_side_channel` | `tests/cve_fixtures/generic_expectation_guard.circom` | `circom` | bundled generic expectation guard |
+| `ZK-CVE-2023-003` | Public signal leaks private information | `information_leakage` / `information_leakage` | `tests/cve_fixtures/generic_expectation_guard.circom` | `circom` | bundled generic expectation guard |
 
-When running CVE regression tests:
-1. The test checks if external circuits are accessible
-2. If not accessible, the test is skipped (not failed)
-3. If accessible, the test runs the fuzzer against the vulnerable circuit
-4. The test verifies that the fuzzer detects the expected vulnerability
+## Catalog Notes
 
-## Integration
+- Later `ZK-CVE-2024-*` and `ZK-CVE-2025-*` entries also exist in `known_vulnerabilities.yaml`, but many of them currently share `generic_expectation_guard.circom` rather than a dedicated target-specific fixture.
+- The stronger credibility signal is the bundled fixture path, not the historical external-drive mapping.
+- If you want to know whether a reference is target-specific or still generic, start with the `regression_test.circuit_path` field in `known_vulnerabilities.yaml`.
 
-The `src/cve/mod.rs` module uses these paths to:
-1. Load the circuit file
-2. Compile it with the appropriate backend
-3. Run the fuzzer's attack strategies
-4. Verify that findings match the expected vulnerability
+## Why This Matters
 
-See `circuit_references.json` for the mapping.
+This catalog is where attack knowledge becomes cumulative:
+
+- a vulnerability class is captured once
+- a regression fixture is kept in-repo
+- the regression runner enforces it on every future tree
+
+That is a stronger story than ad hoc benchmark screenshots because the mapping between vulnerability class and executable fixture stays versioned with the repository.

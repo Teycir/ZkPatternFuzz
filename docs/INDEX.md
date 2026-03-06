@@ -51,28 +51,37 @@ This index focuses on the maintained operator-facing docs. Some top-level files 
 
 ## Reference
 
-14. [ATTACK_DSL_SPEC.md](ATTACK_DSL_SPEC.md)
+14. [CIRCUIT_GEN.md](CIRCUIT_GEN.md)
+    Operator-facing overview of the circuit generator, adversarial corpus flow, and compiler-testing lane.
+
+15. [ATTACK_DSL_SPEC.md](ATTACK_DSL_SPEC.md)
     Normative attack configuration schema.
 
-15. [PATTERN_LIBRARY.md](PATTERN_LIBRARY.md)
+16. [PATTERN_LIBRARY.md](PATTERN_LIBRARY.md)
     Pattern authoring background and examples.
 
-16. [INVARIANT_SPEC_SCHEMA.md](INVARIANT_SPEC_SCHEMA.md)
+17. [INVARIANT_SPEC_SCHEMA.md](INVARIANT_SPEC_SCHEMA.md)
     Invariant spec format used by scans and formal bridges.
 
-17. [SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md](SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md)
+18. [SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md](SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md)
     Reproducible semantic-analysis runbook.
 
-18. [PLUGIN_SYSTEM_GUIDE.md](PLUGIN_SYSTEM_GUIDE.md)
+19. [PLUGIN_API.md](PLUGIN_API.md)
+    Minimal external plugin contract with the required symbol and campaign wiring.
+
+20. [PLUGIN_SYSTEM_GUIDE.md](PLUGIN_SYSTEM_GUIDE.md)
     Plugin loading and safety model.
 
-19. [SECURITY_THREAT_MODEL.md](SECURITY_THREAT_MODEL.md)
+21. [SECURITY_THREAT_MODEL.md](SECURITY_THREAT_MODEL.md)
     Security boundaries and assumptions.
 
-20. [VALIDATION_EVIDENCE.md](VALIDATION_EVIDENCE.md)
+22. [../CVErefs/README.md](../CVErefs/README.md)
+    Operator-facing index of the curated CVE-style regression catalog and fixture mapping.
+
+23. [VALIDATION_EVIDENCE.md](VALIDATION_EVIDENCE.md)
     Published real-target evidence case study with deterministic replay and Picus follow-up.
 
-21. [GROUND_TRUTH_REPORT.md](GROUND_TRUTH_REPORT.md)
+24. [GROUND_TRUTH_REPORT.md](GROUND_TRUTH_REPORT.md)
     Published benchmarked ground-truth recall, precision, and false-positive figures.
 
 ## Historical Context
