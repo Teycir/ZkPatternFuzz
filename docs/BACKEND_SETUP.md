@@ -16,6 +16,8 @@ This document reflects the current repository workflow: ZkPatternFuzz assumes th
 
 For the full host inventory, see [TOOLS_AVAILABLE_ON_HOST.md](TOOLS_AVAILABLE_ON_HOST.md).
 
+`cairo-lang 0.14.0.1` should be installed with Python 3.10. Its `cairo-run` entrypoint fails on Python 3.11+ because of an upstream dataclass default incompatibility.
+
 ## 1. Build The Project
 
 ```bash

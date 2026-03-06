@@ -59,6 +59,35 @@ first_non_empty_line() {
   awk 'NF { print; exit }'
 }
 
+python_version_string() {
+  "$1" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
+}
+
+python_version_at_least() {
+  "$1" - "$2" "$3" <<'PY'
+import sys
+
+major = int(sys.argv[1])
+minor = int(sys.argv[2])
+sys.exit(0 if sys.version_info >= (major, minor) else 1)
+PY
+}
+
+ensure_cairo_lang_python_compatibility() {
+  if [[ "$CAIRO_LANG_VERSION" != "0.14.0.1" ]]; then
+    return
+  fi
+
+  if python_version_at_least "$PYTHON_BIN" 3 11; then
+    local version
+    version="$(python_version_string "$PYTHON_BIN")"
+    echo \
+      "cairo-lang ${CAIRO_LANG_VERSION} is incompatible with Python ${version}; set PYTHON_BIN to Python 3.10." \
+      >&2
+    exit 1
+  fi
+}
+
 probe_snarkjs_version() {
   local line
   line="$(snarkjs --version 2>&1 | first_non_empty_line || true)"
@@ -139,9 +168,12 @@ install_scarb() {
 install_cairo_lang() {
   if command -v cairo-compile >/dev/null 2>&1 \
     && command -v cairo-run >/dev/null 2>&1 \
-    && cairo-compile --version 2>/dev/null | grep -Fq "$CAIRO_LANG_VERSION"; then
+    && cairo-compile --version 2>/dev/null | grep -Fq "$CAIRO_LANG_VERSION" \
+    && cairo-run --version 2>/dev/null | grep -Fq "$CAIRO_LANG_VERSION"; then
     return
   fi
+
+  ensure_cairo_lang_python_compatibility
 
   local venv_dir="$CACHE_DIR/cairo-lang-${CAIRO_LANG_VERSION}"
   local archive="$TMP_DIR/cairo-lang-${CAIRO_LANG_VERSION}.zip"
