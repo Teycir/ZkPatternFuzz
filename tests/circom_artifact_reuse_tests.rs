@@ -8,6 +8,7 @@ use std::time::Duration;
 use tempfile::tempdir;
 use zk_core::Framework;
 use zk_fuzzer::executor::{ExecutorFactory, ExecutorFactoryOptions};
+use zk_fuzzer::targets::CircomTarget;
 
 fn env_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -39,51 +40,48 @@ fn cve_fixture_path(name: &str) -> PathBuf {
         .join(format!("{}.circom", name))
 }
 
-fn cve_fixture_build_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("cve_fixtures")
-        .join("build")
-}
+fn build_cve_fixture_bundle(name: &str, main_component: &str, dest_root: &Path) -> PathBuf {
+    CircomTarget::check_circom_available().expect("Circom CLI required to build fixture bundle");
+    CircomTarget::check_snarkjs_available().expect("snarkjs CLI required to build fixture bundle");
 
-fn copy_dir_recursive(src: &Path, dst: &Path) {
-    fs::create_dir_all(dst).expect("create recursive destination");
-    for entry in fs::read_dir(src).expect("read recursive source") {
-        let entry = entry.expect("read recursive entry");
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        if entry.file_type().expect("entry file type").is_dir() {
-            copy_dir_recursive(&src_path, &dst_path);
-        } else {
-            fs::copy(&src_path, &dst_path).expect("copy recursive file");
-        }
-    }
-}
-
-fn stage_cve_fixture_bundle(name: &str, dest_root: &Path) -> PathBuf {
     let circuit_path = cve_fixture_path(name);
     let staged_circuit_path = dest_root.join(format!("{}.circom", name));
+    let build_dir = dest_root.join("build");
     fs::create_dir_all(dest_root).expect("create fixture destination");
     fs::copy(&circuit_path, &staged_circuit_path).expect("copy fixture circuit");
 
-    let src_build_root = cve_fixture_build_root();
-    let dst_build_root = dest_root.join("build");
-    fs::create_dir_all(&dst_build_root).expect("create fixture build destination");
-    for file_name in [
-        format!("{}.r1cs", name),
-        format!("{}.sym", name),
-        format!("{}_constraints.json", name),
-        format!("{}_metadata.json", name),
-    ] {
-        fs::copy(
-            src_build_root.join(&file_name),
-            dst_build_root.join(&file_name),
-        )
-        .expect("copy fixture build artifact");
-    }
-    copy_dir_recursive(
-        &src_build_root.join(format!("{}_js", name)),
-        &dst_build_root.join(format!("{}_js", name)),
+    let options = ExecutorFactoryOptions {
+        circom_build_dir: Some(build_dir.clone()),
+        ..ExecutorFactoryOptions::default()
+    };
+    ExecutorFactory::create_with_options(
+        Framework::Circom,
+        staged_circuit_path.to_str().expect("utf8 fixture path"),
+        main_component,
+        &options,
+    )
+    .expect("build reusable fixture bundle");
+
+    assert!(
+        build_dir.join(format!("{}.r1cs", name)).exists(),
+        "expected Circom R1CS artifact in staged bundle"
+    );
+    assert!(
+        build_dir
+            .join(format!("{}_js", name))
+            .join(format!("{}.wasm", name))
+            .exists(),
+        "expected Circom WASM artifact in staged bundle"
+    );
+    assert!(
+        build_dir
+            .join(format!("{}_constraints.json", name))
+            .exists(),
+        "expected Circom constraints JSON in staged bundle"
+    );
+    assert!(
+        build_dir.join(format!("{}_metadata.json", name)).exists(),
+        "expected Circom metadata cache in staged bundle"
     );
 
     staged_circuit_path
@@ -98,13 +96,17 @@ fn circom_executor_reuses_bundled_artifacts_without_circom_on_path() {
     };
 
     let sandbox = tempdir().expect("tempdir");
+    let fixture_root = sandbox.path().join("staged_fixture");
+    let circuit_path = build_cve_fixture_bundle(
+        "signature_canonical_guard",
+        "SignatureCanonicalGuard",
+        &fixture_root,
+    );
     env::set_current_dir(sandbox.path()).expect("switch to isolated cwd");
     env::set_var("PATH", sandbox.path());
 
-    let circuit_path = cve_fixture_path("signature_canonical_guard");
-    assert!(circuit_path.exists(), "fixture circuit should exist");
-
     let options = ExecutorFactoryOptions {
+        circom_build_dir: Some(fixture_root.join("build")),
         circom_skip_compile_if_artifacts: true,
         ..ExecutorFactoryOptions::default()
     };
@@ -135,16 +137,20 @@ fn circom_executor_reuses_bundled_artifacts_when_source_is_newer_than_cache() {
 
     let sandbox = tempdir().expect("tempdir");
     env::set_current_dir(sandbox.path()).expect("switch to isolated cwd");
-    env::set_var("PATH", sandbox.path());
-
     let fixture_root = sandbox.path().join("staged_fixture");
-    let circuit_path = stage_cve_fixture_bundle("signature_canonical_guard", &fixture_root);
+    let circuit_path = build_cve_fixture_bundle(
+        "signature_canonical_guard",
+        "SignatureCanonicalGuard",
+        &fixture_root,
+    );
     let original_source = fs::read_to_string(&circuit_path).expect("read staged fixture source");
 
     thread::sleep(Duration::from_millis(20));
     fs::write(&circuit_path, original_source).expect("refresh staged fixture source mtime");
+    env::set_var("PATH", sandbox.path());
 
     let options = ExecutorFactoryOptions {
+        circom_build_dir: Some(fixture_root.join("build")),
         circom_skip_compile_if_artifacts: true,
         ..ExecutorFactoryOptions::default()
     };
