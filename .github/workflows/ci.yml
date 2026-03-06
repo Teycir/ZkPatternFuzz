@@ -277,31 +277,44 @@ jobs:
             max_safe_fpr: "0.20"
             max_safe_high_conf_fpr: "0.05"
             retention_days: 30
-    if: |
-      (github.event_name != 'schedule' && matrix.event_scope == 'ci') ||
-      (github.event_name == 'schedule' && matrix.event_scope == 'schedule')
     steps:
+      - name: Check if job should run
+        id: should_run
+        run: |
+          if [[ "${{ github.event_name }}" != "schedule" && "${{ matrix.event_scope }}" == "ci" ]] || \
+             [[ "${{ github.event_name }}" == "schedule" && "${{ matrix.event_scope }}" == "schedule" ]]; then
+            echo "run=true" >> $GITHUB_OUTPUT
+          else
+            echo "run=false" >> $GITHUB_OUTPUT
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.should_run.outputs.run == 'true'
 
       - name: Verify Rust toolchain availability (pre-provisioned)
+        if: steps.should_run.outputs.run == 'true'
         run: |
           rustc --version || exit 1
           cargo --version || exit 1
 
       - name: Verify Node.js availability (pre-provisioned)
+        if: steps.should_run.outputs.run == 'true'
         run: |
           node --version || exit 1
           npm --version || exit 1
 
       - name: Install JavaScript dependencies
+        if: steps.should_run.outputs.run == 'true'
         run: npm ci
 
       - name: Verify Rust installation
+        if: steps.should_run.outputs.run == 'true'
         run: |
           rustc --version || exit 1
           cargo --version || exit 1
 
       - name: Cache cargo registry
+        if: steps.should_run.outputs.run == 'true'
         uses: actions/cache@v4
         with:
           path: |
@@ -314,6 +327,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Install and verify Z3
+        if: steps.should_run.outputs.run == 'true'
         run: |
           if ! command -v z3 >/dev/null 2>&1; then
             sudo apt-get update
@@ -323,17 +337,21 @@ jobs:
           z3 --version
 
       - name: Verify benchmark toolchain availability (pre-provisioned)
+        if: steps.should_run.outputs.run == 'true'
         run: |
           command -v circom >/dev/null 2>&1 || { echo "::error::circom not found in PATH"; exit 1; }
           command -v snarkjs >/dev/null 2>&1 || { echo "::error::snarkjs not found in PATH"; exit 1; }
 
       - name: Build benchmark binaries
+        if: steps.should_run.outputs.run == 'true'
         run: cargo build --release --bin zk0d_batch --bin zk0d_benchmark
 
       - name: Validate failure dashboard regression tests
+        if: steps.should_run.outputs.run == 'true'
         run: cargo test --test test_benchmark_failure_dashboard
 
       - name: Run benchmark suites
+        if: steps.should_run.outputs.run == 'true'
         env:
           CIRCOM_INCLUDE_PATHS: third_party:node_modules
         run: |
@@ -348,6 +366,7 @@ jobs:
             --timeout ${{ matrix.timeout }}
 
       - name: Apply benchmark regression gate
+        if: steps.should_run.outputs.run == 'true'
         id: matrix_gate
         continue-on-error: true
         env:
@@ -359,13 +378,13 @@ jobs:
         run: cargo run --locked --bin zkf_checks -- benchmark-regression-gate --benchmark-root artifacts/benchmark_runs
 
       - name: Enforce fast-smoke gate
-        if: matrix.track == 'fast-smoke' && steps.matrix_gate.outcome == 'failure'
+        if: steps.should_run.outputs.run == 'true' && matrix.track == 'fast-smoke' && steps.matrix_gate.outcome == 'failure'
         run: |
           echo "::error::Fast smoke regression gate failed."
           exit 1
 
       - name: Generate nightly trend artifacts
-        if: matrix.track == 'deep-scheduled'
+        if: steps.should_run.outputs.run == 'true' && matrix.track == 'deep-scheduled'
         env:
           ZKF_FAILURE_MAX_RATE_LOCK_CONTENTION: ${{ vars.ZKF_FAILURE_MAX_RATE_LOCK_CONTENTION }}
           ZKF_FAILURE_MAX_RATE_SETUP_TOOLING: ${{ vars.ZKF_FAILURE_MAX_RATE_SETUP_TOOLING }}
@@ -383,12 +402,12 @@ jobs:
             --output-dir artifacts/benchmark_trends
 
       - name: Emit nightly regression alert
-        if: matrix.track == 'deep-scheduled' && steps.matrix_gate.outcome == 'failure'
+        if: steps.should_run.outputs.run == 'true' && matrix.track == 'deep-scheduled' && steps.matrix_gate.outcome == 'failure'
         run: |
           echo "::warning::Nightly deep-scheduled regression detected. See artifacts/benchmark_trends/latest_trend.md and benchmark summaries."
 
       - name: Upload release-hardening artifacts
-        if: always()
+        if: steps.should_run.outputs.run == 'true' && always()
         uses: actions/upload-artifact@v4
         with:
           name: release-hardening-${{ matrix.track }}-${{ github.run_id }}
