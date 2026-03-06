@@ -43,8 +43,8 @@ fn test_parse_forall_invariant() {
 
 #[test]
 fn test_parse_forall_invariant_with_snake_case_array() {
-    let ast = parse_invariant_relation("forall i in path_indices: path_indices[i] in {0,1}")
-        .unwrap();
+    let ast =
+        parse_invariant_relation("forall i in path_indices: path_indices[i] in {0,1}").unwrap();
     match ast {
         InvariantAST::ForAll { expr, .. } => {
             assert!(matches!(*expr, InvariantAST::InSet(_, _)));
