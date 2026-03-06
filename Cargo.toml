@@ -114,3 +114,4 @@ incremental = false
 [[bin]]
 name = "zk-fuzzer"
 path = "src/main.rs"
+bench = false

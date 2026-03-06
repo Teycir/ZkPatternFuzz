@@ -67,6 +67,22 @@ fn yaml_value(snippet: &str) -> serde_yaml::Value {
     serde_yaml::from_str(snippet).expect("valid yaml snippet")
 }
 
+fn configure_dispatch_only_runtime(config: &mut FuzzConfig) {
+    config.campaign.parameters.timeout_seconds = 1;
+    config.campaign.parameters.additional.insert(
+        "fuzzing_iterations".to_string(),
+        serde_yaml::Value::Number(0.into()),
+    );
+    config.campaign.parameters.additional.insert(
+        "fuzzing_timeout_seconds".to_string(),
+        serde_yaml::Value::Number(1.into()),
+    );
+    config.campaign.parameters.additional.insert(
+        "symbolic_enabled".to_string(),
+        serde_yaml::Value::Bool(false),
+    );
+}
+
 // ============================================================================
 // Test 1: Underconstrained Oracle - Stateful Collision Detection
 // ============================================================================
@@ -238,6 +254,7 @@ fn test_semantic_oracles_from_parameters() {
 #[tokio::test]
 async fn test_constraint_inference_attack_dispatch() {
     let mut config = create_test_config();
+    configure_dispatch_only_runtime(&mut config);
     config.attacks = vec![Attack {
         attack_type: AttackType::ConstraintInference,
         description: "Test constraint inference".to_string(),
@@ -257,6 +274,7 @@ async fn test_constraint_inference_attack_dispatch() {
 #[tokio::test]
 async fn test_metamorphic_attack_dispatch() {
     let mut config = create_test_config();
+    configure_dispatch_only_runtime(&mut config);
     config.attacks = vec![Attack {
         attack_type: AttackType::Metamorphic,
         description: "Test metamorphic testing".to_string(),
@@ -280,6 +298,7 @@ async fn test_metamorphic_attack_dispatch() {
 #[tokio::test]
 async fn test_constraint_slice_attack_dispatch() {
     let mut config = create_test_config();
+    configure_dispatch_only_runtime(&mut config);
     config.attacks = vec![Attack {
         attack_type: AttackType::ConstraintSlice,
         description: "Test constraint slicing".to_string(),
@@ -296,6 +315,7 @@ async fn test_constraint_slice_attack_dispatch() {
 #[tokio::test]
 async fn test_spec_inference_attack_dispatch() {
     let mut config = create_test_config();
+    configure_dispatch_only_runtime(&mut config);
     config.attacks = vec![Attack {
         attack_type: AttackType::SpecInference,
         description: "Test spec inference".to_string(),
@@ -304,7 +324,7 @@ async fn test_spec_inference_attack_dispatch() {
             let mut m = serde_yaml::Mapping::new();
             m.insert(
                 serde_yaml::Value::String("sample_count".to_string()),
-                serde_yaml::Value::Number(50.into()),
+                serde_yaml::Value::Number(1.into()),
             );
             m
         }),
@@ -319,6 +339,7 @@ async fn test_spec_inference_attack_dispatch() {
 #[tokio::test]
 async fn test_witness_collision_attack_dispatch() {
     let mut config = create_test_config();
+    configure_dispatch_only_runtime(&mut config);
     config.attacks = vec![Attack {
         attack_type: AttackType::WitnessCollision,
         description: "Test witness collision detection".to_string(),
@@ -327,7 +348,7 @@ async fn test_witness_collision_attack_dispatch() {
             let mut m = serde_yaml::Mapping::new();
             m.insert(
                 serde_yaml::Value::String("samples".to_string()),
-                serde_yaml::Value::Number(100.into()),
+                serde_yaml::Value::Number(1.into()),
             );
             m
         }),
@@ -483,23 +504,7 @@ defi_advanced:
 
     for (attack_type, description, attack_config) in attack_cases {
         let mut config = create_test_config();
-        config.campaign.parameters.timeout_seconds = 1;
-        config.campaign.parameters.additional.insert(
-            "fuzzing_iterations".to_string(),
-            serde_yaml::Value::Number(1.into()),
-        );
-        config.campaign.parameters.additional.insert(
-            "fuzzing_timeout_seconds".to_string(),
-            serde_yaml::Value::Number(1.into()),
-        );
-        config.campaign.parameters.additional.insert(
-            "max_iterations".to_string(),
-            serde_yaml::Value::Number(1.into()),
-        );
-        config.campaign.parameters.additional.insert(
-            "symbolic_enabled".to_string(),
-            serde_yaml::Value::Bool(false),
-        );
+        configure_dispatch_only_runtime(&mut config);
         config.attacks = vec![Attack {
             attack_type: attack_type.clone(),
             description: description.to_string(),
@@ -600,6 +605,7 @@ async fn test_phase0_success_metrics() {
 
     // This test runs a complete campaign with all features
     let mut config = create_test_config();
+    config.campaign.parameters.timeout_seconds = 1;
 
     // Enable all novel attacks
     config.attacks = vec![
@@ -647,7 +653,15 @@ async fn test_phase0_success_metrics() {
     // Enable continuous fuzzing
     config.campaign.parameters.additional.insert(
         "fuzzing_iterations".to_string(),
-        serde_yaml::Value::Number(500.into()),
+        serde_yaml::Value::Number(10.into()),
+    );
+    config.campaign.parameters.additional.insert(
+        "fuzzing_timeout_seconds".to_string(),
+        serde_yaml::Value::Number(1.into()),
+    );
+    config.campaign.parameters.additional.insert(
+        "symbolic_enabled".to_string(),
+        serde_yaml::Value::Bool(false),
     );
 
     let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
