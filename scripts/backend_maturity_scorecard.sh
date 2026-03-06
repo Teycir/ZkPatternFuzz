@@ -120,11 +120,19 @@ done
 
 if [[ -z "$BENCHMARK_SUMMARY" ]]; then
   if [[ -d "$BENCHMARK_ROOT" ]]; then
-    mapfile -t summaries < <(
-      find "$BENCHMARK_ROOT" -type f \
-        | rg '/benchmark_[0-9]{8}_[0-9]{6}/summary\.json$' \
-        | sort
-    )
+    if command -v rg >/dev/null 2>&1; then
+      mapfile -t summaries < <(
+        find "$BENCHMARK_ROOT" -type f \
+          | rg '/benchmark_[0-9]{8}_[0-9]{6}/summary\.json$' \
+          | sort
+      )
+    else
+      mapfile -t summaries < <(
+        find "$BENCHMARK_ROOT" -type f -name 'summary.json' \
+          | grep -E '/benchmark_[0-9]{8}_[0-9]{6}/summary\.json$' \
+          | sort
+      )
+    fi
     if [[ "${#summaries[@]}" -gt 0 ]]; then
       BENCHMARK_SUMMARY="${summaries[${#summaries[@]}-1]}"
     fi
