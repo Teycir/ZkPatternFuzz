@@ -990,7 +990,7 @@ impl CircuitExecutor for CircomExecutor {
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)
             }
-            Err(e) => ExecutionResult::failure(e.to_string()),
+            Err(e) => ExecutionResult::failure(format!("{:#}", e)),
         }
     }
 

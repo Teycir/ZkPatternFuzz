@@ -298,6 +298,24 @@ impl FuzzingEngine {
     }
 
     pub(super) fn split_indexed_name(name: &str) -> Option<(&str, usize)> {
+        if let Some(open) = name.rfind('[') {
+            let close = name.rfind(']')?;
+            if close > open {
+                let idx = match name[open + 1..close].parse::<usize>() {
+                    Ok(idx) => idx,
+                    Err(err) => {
+                        tracing::warn!(
+                            "Invalid bracketed input suffix '{}': {}",
+                            &name[open + 1..close],
+                            err
+                        );
+                        return None;
+                    }
+                };
+                return Some((&name[..open], idx));
+            }
+        }
+
         let (base, idx_str) = name.rsplit_once('_')?;
         if idx_str.chars().all(|c| c.is_ascii_digit()) {
             let idx = match idx_str.parse::<usize>() {
@@ -329,6 +347,14 @@ impl FuzzingEngine {
 
     pub(super) fn parse_field_string(raw: &str) -> Option<FieldElement> {
         let trimmed = raw.trim();
+        let lowered = trimmed.to_ascii_lowercase();
+
+        match lowered.as_str() {
+            "p-1" | "max" | "max_field" => return Some(FieldElement::max_value()),
+            "(p-1)/2" => return Some(FieldElement::half_modulus()),
+            _ => {}
+        }
+
         if trimmed.starts_with("0x") || trimmed.starts_with("0X") {
             return match FieldElement::from_hex_checked(trimmed) {
                 Ok(value) => Some(value),

@@ -132,5 +132,21 @@ fn merkle_templates_bind_path_indices_as_arrays() {
         assert_eq!(template["inputs"][3]["name"].as_str(), Some("path_indices"));
         assert_eq!(template["inputs"][3]["type"].as_str(), Some("array<field>"));
         assert_eq!(template["inputs"][3]["length"].as_u64(), Some(3));
+        assert_eq!(
+            template["active_profile"].as_str(),
+            Some("seeded_merkle"),
+            "{} should activate the seeded_merkle profile",
+            relative
+        );
+        let seed_path = template["profiles"]["seeded_merkle"]["seed_inputs_path"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{} should define profiles.seeded_merkle.seed_inputs_path", relative));
+        let absolute = repo_path(seed_path);
+        assert!(
+            absolute.exists(),
+            "seed_inputs_path '{}' referenced by {} should exist",
+            seed_path,
+            relative
+        );
     }
 }

@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use tempfile::NamedTempFile;
 use zk_fuzzer::config::*;
 use zk_fuzzer::fuzzer::FuzzingEngine;
 
@@ -78,5 +79,61 @@ async fn underconstrained_runner_errors_when_no_executable_witness_exists() {
         err_text.contains("could not find any executable witness pairs"),
         "unexpected error: {}",
         err_text
+    );
+}
+
+#[tokio::test]
+async fn underconstrained_runner_uses_external_witness_seeds_directly() {
+    let seed_file = NamedTempFile::new().expect("seed file");
+    std::fs::write(
+        seed_file.path(),
+        r#"[
+  {"pub": "5", "a": "2", "b": "3"},
+  {"pub": "5", "a": "1", "b": "4"}
+]
+"#,
+    )
+    .expect("write seed file");
+
+    let mut config = build_underconstrained_config(
+        "tests/fixtures/underconstrained_seeded_collision.circom",
+        "main",
+    );
+    config.campaign.parameters.additional.insert(
+        "fuzzing_iterations".to_string(),
+        serde_yaml::Value::Number(1.into()),
+    );
+    config.campaign.parameters.additional.insert(
+        "fuzzing_timeout_seconds".to_string(),
+        serde_yaml::Value::Number(5.into()),
+    );
+    config.campaign.parameters.additional.insert(
+        "symbolic_enabled".to_string(),
+        serde_yaml::Value::Bool(false),
+    );
+    config.campaign.parameters.additional.insert(
+        "seed_inputs_path".to_string(),
+        serde_yaml::Value::String(seed_file.path().display().to_string()),
+    );
+    config.campaign.parameters.additional.insert(
+        "circom_build_dir".to_string(),
+        serde_yaml::Value::String("/tmp/zkfuzz_tests/underconstrained_seeded_collision".to_string()),
+    );
+
+    let mut engine = FuzzingEngine::new(config, Some(23), 1).expect("engine init should succeed");
+    let report = engine.run(None).await.expect("run should succeed");
+
+    let has_underconstrained = report
+        .findings
+        .iter()
+        .any(|finding| matches!(finding.attack_type, AttackType::Underconstrained));
+    assert!(
+        has_underconstrained,
+        "expected underconstrained finding from direct witness seeds, found {:?}",
+        report
+            .findings
+            .iter()
+            .map(|finding| &finding.attack_type)
+            .collect::<Vec<_>>()
     );
 }

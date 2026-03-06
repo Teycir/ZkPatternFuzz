@@ -107,8 +107,8 @@ impl FuzzingEngine {
             return Ok(());
         }
 
-        let corpus_seed_inputs = self.collect_corpus_inputs(witness_pairs.max(1));
-        if corpus_seed_inputs.is_empty() {
+        let seed_inputs = self.collect_underconstrained_seed_inputs(witness_pairs.max(1))?;
+        if seed_inputs.is_empty() {
             anyhow::bail!(
                 "Underconstrained attack requires non-empty corpus seeds to avoid \
                  random invalid witness no-op behavior; provide seed inputs or run a \
@@ -124,7 +124,7 @@ impl FuzzingEngine {
         {
             Some(fixed)
         } else {
-            let base_inputs = corpus_seed_inputs
+            let base_inputs = seed_inputs
                 .first()
                 .cloned()
                 .unwrap_or_else(|| self.generate_test_case().inputs);
@@ -138,7 +138,7 @@ impl FuzzingEngine {
         let mut test_cases = Vec::with_capacity(witness_pairs);
         let mut non_binary_generated = 0usize;
         let mut non_binary_generated_samples = Vec::new();
-        for inputs in corpus_seed_inputs.into_iter().take(witness_pairs) {
+        for inputs in seed_inputs.into_iter().take(witness_pairs) {
             let mut tc = TestCase {
                 inputs,
                 expected_output: None,
@@ -206,6 +206,7 @@ impl FuzzingEngine {
         let mut chunk_start = 0usize;
         let mut successful_executions = 0usize;
         let mut failed_executions = 0usize;
+        let mut failed_execution_samples = Vec::new();
         let mut non_binary_successes = 0usize;
         let mut non_binary_success_samples = Vec::new();
 
@@ -270,6 +271,32 @@ impl FuzzingEngine {
                     output_map.entry(output_hash).or_default().push(idx);
                 } else {
                     failed_executions = failed_executions.saturating_add(1);
+                    if failed_execution_samples.len() < 3 {
+                        let input_preview = test_cases[idx]
+                            .inputs
+                            .iter()
+                            .enumerate()
+                            .take(8)
+                            .map(|(input_idx, value)| {
+                                let label = self
+                                    .config
+                                    .inputs
+                                    .get(input_idx)
+                                    .map(|input| input.name.as_str())
+                                    .unwrap_or("input");
+                                format!("{}={}", label, value.to_decimal_string())
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        failed_execution_samples.push(format!(
+                            "error={} input_preview=[{}]",
+                            result
+                                .error
+                                .clone()
+                                .unwrap_or_else(|| "<unknown>".to_string()),
+                            input_preview
+                        ));
+                    }
                 }
 
                 if let Some(p) = progress {
@@ -315,6 +342,12 @@ impl FuzzingEngine {
                 successful_executions,
                 non_binary_generated_samples,
                 non_binary_success_samples
+            );
+        }
+        if !failed_execution_samples.is_empty() {
+            tracing::warn!(
+                "Underconstrained failed execution samples: {:?}",
+                failed_execution_samples
             );
         }
 
@@ -640,7 +673,7 @@ impl FuzzingEngine {
             .filter(|c| c.is_ascii_alphanumeric())
             .flat_map(|c| c.to_lowercase())
             .collect();
-        normalized.contains("pathindex")
+        normalized.contains("pathindex") || normalized.contains("pathindices")
     }
 
     fn first_non_binary_path_sample(
@@ -664,5 +697,75 @@ impl FuzzingEngine {
 
     fn field_element_is_binary(value: &FieldElement) -> bool {
         value.is_zero() || value.is_one()
+    }
+
+    fn collect_underconstrained_seed_inputs(
+        &self,
+        limit: usize,
+    ) -> anyhow::Result<Vec<Vec<FieldElement>>> {
+        use std::collections::HashSet;
+
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        let mut combined = Vec::new();
+        let mut seen = HashSet::new();
+        let mut external_loaded = 0usize;
+
+        if let Some(path) = Self::additional_string(
+            &self.config.campaign.parameters.additional,
+            "seed_inputs_path",
+        ) {
+            let external = self.load_seed_inputs_from_path(&path)?;
+            external_loaded = external.len();
+            if external_loaded == 0 {
+                tracing::warn!(
+                    "Configured seed_inputs_path '{}' produced 0 usable witness seeds \
+                     for underconstrained attack",
+                    path
+                );
+            } else {
+                tracing::info!(
+                    "Loaded {} direct witness seeds from {} for underconstrained attack",
+                    external_loaded,
+                    path
+                );
+            }
+
+            for inputs in external {
+                if seen.insert(inputs.clone()) {
+                    combined.push(inputs);
+                    if combined.len() >= limit {
+                        tracing::info!(
+                            "Underconstrained seed candidates: external={} corpus=0 unique_used={}",
+                            external_loaded,
+                            combined.len()
+                        );
+                        return Ok(combined);
+                    }
+                }
+            }
+        }
+
+        let mut corpus_loaded = 0usize;
+        for inputs in self.collect_corpus_inputs(limit.max(1)) {
+            corpus_loaded = corpus_loaded.saturating_add(1);
+            if seen.insert(inputs.clone()) {
+                combined.push(inputs);
+                if combined.len() >= limit {
+                    break;
+                }
+            }
+        }
+
+        tracing::info!(
+            "Underconstrained seed candidates: external={} corpus={} unique_used={}",
+            external_loaded,
+            corpus_loaded,
+            combined.len()
+        );
+
+        Ok(combined)
     }
 }

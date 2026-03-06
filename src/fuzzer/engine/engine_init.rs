@@ -132,21 +132,11 @@ impl FuzzingEngine {
 
             let kill_on_timeout =
                 Self::additional_bool(additional, "kill_on_timeout").unwrap_or(true);
-            let memory_limit_bytes =
-                Self::additional_u64(additional, "isolation_memory_limit_bytes")
-                    .or_else(|| {
-                        Self::additional_u64(additional, "isolation_memory_limit_mb")
-                            .map(|mb| mb.saturating_mul(1024 * 1024))
-                    })
-                    .or_else(|| {
-                        std::env::var("ZK_FUZZER_ISOLATION_MEMORY_LIMIT_MB")
-                            .ok()
-                            .and_then(|raw| raw.trim().parse::<u64>().ok())
-                            .map(|mb| mb.saturating_mul(1024 * 1024))
-                    })
-                    .unwrap_or_else(|| {
-                        Self::default_isolation_memory_limit_bytes(additional, workers)
-                    });
+            let memory_limit_bytes = Self::resolve_isolation_memory_limit_bytes(
+                config.campaign.target.framework,
+                additional,
+                workers,
+            );
             let cpu_limit_secs = Self::additional_u64(additional, "isolation_cpu_limit_secs")
                 .or_else(|| {
                     std::env::var("ZK_FUZZER_ISOLATION_CPU_LIMIT_SECS")
@@ -154,7 +144,7 @@ impl FuzzingEngine {
                         .and_then(|raw| raw.trim().parse::<u64>().ok())
                 })
                 .unwrap_or(0);
-            Self::enforce_resource_preflight(additional, workers, Some(memory_limit_bytes))?;
+            Self::enforce_resource_preflight(additional, workers, memory_limit_bytes)?;
 
             let mut isolated_executor = IsolatedExecutor::new(
                 executor,
@@ -172,7 +162,7 @@ impl FuzzingEngine {
             use crate::executor::IsolationConfig;
             let isolation_config = IsolationConfig {
                 timeout_ms: execution_timeout_ms,
-                memory_limit_bytes,
+                memory_limit_bytes: memory_limit_bytes.unwrap_or(0),
                 cpu_limit_secs,
                 kill_on_timeout,
                 ..IsolationConfig::default()
@@ -180,11 +170,14 @@ impl FuzzingEngine {
             isolated_executor = isolated_executor.with_config(isolation_config);
 
             executor = Arc::new(isolated_executor);
+            let memory_limit_label = memory_limit_bytes
+                .map(|bytes| format!("{} MiB", bytes / (1024 * 1024)))
+                .unwrap_or_else(|| "unlimited".to_string());
             tracing::info!(
-                "Per-exec isolation enabled (timeout {} ms, kill_on_timeout: {}, memory_limit={} MiB, cpu_limit={}s)",
+                "Per-exec isolation enabled (timeout {} ms, kill_on_timeout: {}, memory_limit={}, cpu_limit={}s)",
                 execution_timeout_ms,
                 kill_on_timeout,
-                memory_limit_bytes / (1024 * 1024),
+                memory_limit_label,
                 cpu_limit_secs
             );
         } else {
@@ -515,10 +508,34 @@ impl FuzzingEngine {
         Self::host_memory_snapshot_mb().map(|(_available_mb, total_mb)| total_mb)
     }
 
-    fn default_isolation_memory_limit_bytes(
+    fn resolve_isolation_memory_limit_bytes(
+        framework: Framework,
         additional: &crate::config::AdditionalConfig,
         workers: usize,
-    ) -> u64 {
+    ) -> Option<u64> {
+        Self::additional_u64(additional, "isolation_memory_limit_bytes")
+            .or_else(|| {
+                Self::additional_u64(additional, "isolation_memory_limit_mb")
+                    .map(|mb| mb.saturating_mul(1024 * 1024))
+            })
+            .or_else(|| {
+                std::env::var("ZK_FUZZER_ISOLATION_MEMORY_LIMIT_MB")
+                    .ok()
+                    .and_then(|raw| raw.trim().parse::<u64>().ok())
+                    .map(|mb| mb.saturating_mul(1024 * 1024))
+            })
+            .or_else(|| Self::default_isolation_memory_limit_bytes(framework, additional, workers))
+    }
+
+    fn default_isolation_memory_limit_bytes(
+        framework: Framework,
+        additional: &crate::config::AdditionalConfig,
+        workers: usize,
+    ) -> Option<u64> {
+        if framework == Framework::Circom {
+            return None;
+        }
+
         let workers = workers.max(1) as u64;
         let reserved_mb =
             Self::additional_u64(additional, "isolation_memory_reserved_mb").unwrap_or(4096);
@@ -541,6 +558,6 @@ impl FuzzingEngine {
             })
             .unwrap_or(4096);
 
-        per_worker_mb.saturating_mul(1024 * 1024)
+        Some(per_worker_mb.saturating_mul(1024 * 1024))
     }
 }

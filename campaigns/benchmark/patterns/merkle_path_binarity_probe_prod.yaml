@@ -1,3 +1,10 @@
+profiles:
+  seeded_merkle:
+    description: "Inject deterministic valid witnesses for underconstrained Merkle replay"
+    seed_inputs_path: "campaigns/benchmark/seed_inputs/merkle_unconstrained_seed_inputs.json"
+
+active_profile: seeded_merkle
+
 invariants:
   - name: merkle_path_indices_binary
     invariant_type: constraint
