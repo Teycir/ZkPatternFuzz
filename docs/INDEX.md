@@ -81,10 +81,13 @@ This index focuses on the maintained operator-facing docs. Some top-level files 
 23. [../CVErefs/README.md](../CVErefs/README.md)
     Operator-facing index of the curated CVE-style regression catalog and fixture mapping.
 
-24. [VALIDATION_EVIDENCE.md](VALIDATION_EVIDENCE.md)
+24. [VALIDATION_CORPUS.md](VALIDATION_CORPUS.md)
+    Generated validation corpus index tying benchmark, replay, semantic, and CVE regression evidence together.
+
+25. [VALIDATION_EVIDENCE.md](VALIDATION_EVIDENCE.md)
     Published real-target evidence case study with deterministic replay and Picus follow-up.
 
-25. [GROUND_TRUTH_REPORT.md](GROUND_TRUTH_REPORT.md)
+26. [GROUND_TRUTH_REPORT.md](GROUND_TRUTH_REPORT.md)
     Published benchmarked ground-truth recall, precision, and false-positive figures.
 
 ## Historical Context

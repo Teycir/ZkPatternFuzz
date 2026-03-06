@@ -1,0 +1,44 @@
+schema_version: "1"
+title: "ZkPatternFuzz Validation Corpus"
+lanes:
+  - id: "production_depth_benchmark"
+    kind: "benchmark_publication"
+    title: "Production-depth benchmark publication"
+    description: "Published benchmark over vulnerable and safe suites on the current tree."
+    rerun_command: "cargo run --quiet --bin zk0d_benchmark -- --config-profile prod --suite safe_regression,vulnerable_ground_truth --trials 2 --jobs 8 --batch-jobs 1 --workers 1 --iterations 5000 --timeout 300 --output-dir artifacts/benchmark_runs_prod_current_tree_p8"
+    evidence_paths:
+      summary_json: "artifacts/benchmark_runs_prod_current_tree_p8/benchmark_20260306_025706/summary.json"
+      report_md: "docs/GROUND_TRUTH_REPORT.md"
+
+  - id: "ext003_clean_checkout_replay"
+    kind: "deterministic_replay"
+    title: "EXT-003 clean-checkout exploit replay"
+    description: "Deterministic replay bundle proving exploitability of the IsZero-style target on a frozen external checkout."
+    rerun_command: "python3 artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260224_231300_clean_checkout/replay_ext003_iszero_exploit.py --repo /tmp/ext003_clean_20260224_231039 --entrypoint tests/sample/test_vuln_iszero.circom --component VulnerableIsZero --input 5 --expected-sha 072bf1fbbd1c9ecad58d4f6d2204c3b96e7fec17"
+    evidence_paths:
+      replay_command: "artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260224_231300_clean_checkout/replay_command.txt"
+      exploit_notes: "artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260224_231300_clean_checkout/exploit_notes.md"
+      replay_log: "artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260224_231300_clean_checkout/replay_ext003_iszero_exploit.log"
+      impact_md: "artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260224_231300_clean_checkout/impact.md"
+      report_md: "docs/VALIDATION_EVIDENCE.md"
+
+  - id: "semantic_exit_sample"
+    kind: "semantic_validation"
+    title: "Semantic exit sample"
+    description: "Checked-in semantic analysis lane with execution evidence, generated reports, and manual-label workflow."
+    rerun_command: "scripts/run_semantic_exit_sample.sh"
+    evidence_paths:
+      summary_json: "artifacts/semantic_exit/latest_report.json"
+      campaign_readme: "campaigns/semantic/README.md"
+      guide_md: "docs/SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md"
+
+  - id: "cve_regression_lane"
+    kind: "cve_regression_lane"
+    title: "Bundled CVE regression lane"
+    description: "Deterministic in-repo CVE-style regression fixtures with a checked-in runner and catalog."
+    rerun_command: "cargo test --test cve_regression_runner -- --nocapture"
+    evidence_paths:
+      catalog_yaml: "templates/known_vulnerabilities.yaml"
+      runner_rs: "tests/cve_regression_runner.rs"
+      fixtures_dir: "tests/cve_fixtures"
+      catalog_readme: "CVErefs/README.md"

@@ -334,6 +334,7 @@ Operational references:
 
 Validation references:
 
+- [docs/VALIDATION_CORPUS.md](docs/VALIDATION_CORPUS.md)
 - [docs/VALIDATION_EVIDENCE.md](docs/VALIDATION_EVIDENCE.md)
 - [docs/GROUND_TRUTH_REPORT.md](docs/GROUND_TRUTH_REPORT.md)
 - [CVErefs/README.md](CVErefs/README.md)
