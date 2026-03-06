@@ -117,7 +117,9 @@ async fn underconstrained_runner_uses_external_witness_seeds_directly() {
     );
     config.campaign.parameters.additional.insert(
         "circom_build_dir".to_string(),
-        serde_yaml::Value::String("/tmp/zkfuzz_tests/underconstrained_seeded_collision".to_string()),
+        serde_yaml::Value::String(
+            "/tmp/zkfuzz_tests/underconstrained_seeded_collision".to_string(),
+        ),
     );
 
     let mut engine = FuzzingEngine::new(config, Some(23), 1).expect("engine init should succeed");

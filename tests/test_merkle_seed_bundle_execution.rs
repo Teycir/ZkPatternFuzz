@@ -38,7 +38,9 @@ fn load_first_merkle_seed() -> Vec<FieldElement> {
         .as_array()
         .expect("path_indices array")
     {
-        inputs.push(parse_decimal_field(value.as_str().expect("path index string")));
+        inputs.push(parse_decimal_field(
+            value.as_str().expect("path index string"),
+        ));
     }
     inputs
 }
