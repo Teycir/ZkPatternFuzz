@@ -998,7 +998,10 @@ impl FuzzConfig {
 
     /// Load configuration from a YAML file with v2 support
     pub fn from_yaml_v2(path: &str) -> Result<Self, ConfigV2Error> {
-        let base_path = Path::new(path).parent().unwrap_or_else(|| Path::new(".")).to_path_buf();
+        let base_path = Path::new(path)
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf();
 
         let mut resolver = ConfigResolver::new(base_path);
         resolver.resolve(path)
