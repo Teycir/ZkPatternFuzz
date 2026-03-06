@@ -26,6 +26,9 @@ members = [
     "crates/zk-circuit-gen",
 ]
 
+[lib]
+bench = false
+
 [dependencies]
 # Config & Serialization
 serde = { version = "1.0", features = ["derive"] }
