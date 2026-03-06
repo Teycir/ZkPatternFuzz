@@ -534,6 +534,12 @@ impl IsolatedExecutor {
         let response_data = std::fs::read_to_string(&response_path)
             .with_context(|| format!("Exec worker response missing at {:?}", response_path))?;
         remove_response_file(&response_path);
+        if response_data.trim().is_empty() {
+            anyhow::bail!(
+                "Exec worker at '{}' exited without writing a response payload",
+                self.worker_exe.display()
+            );
+        }
 
         let response: ExecResponse = serde_json::from_str(&response_data)?;
         Ok(response)
@@ -631,7 +637,39 @@ fn resolve_worker_exe() -> anyhow::Result<PathBuf> {
         Err(std::env::VarError::NotPresent) => {}
         Err(e) => anyhow::bail!("Invalid ZK_FUZZER_EXEC_WORKER value: {}", e),
     }
-    Ok(std::env::current_exe()?)
+
+    if let Ok(path) = std::env::var("CARGO_BIN_EXE_zk-fuzzer") {
+        let candidate = PathBuf::from(path);
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+
+    let current = std::env::current_exe()?;
+    if current.file_stem().and_then(|stem| stem.to_str()) == Some("zk-fuzzer") {
+        return Ok(current);
+    }
+
+    if let Some(profile_dir) = current.parent().and_then(|parent| {
+        match parent.file_name().and_then(|name| name.to_str()) {
+            Some("deps") => parent.parent(),
+            _ => Some(parent),
+        }
+    }) {
+        let candidate = profile_dir.join(if cfg!(windows) {
+            "zk-fuzzer.exe"
+        } else {
+            "zk-fuzzer"
+        });
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+
+    anyhow::bail!(
+        "Unable to resolve exec worker binary from '{}'. Set ZK_FUZZER_EXEC_WORKER to the zk-fuzzer binary path.",
+        current.display()
+    )
 }
 
 fn make_response_path() -> anyhow::Result<PathBuf> {

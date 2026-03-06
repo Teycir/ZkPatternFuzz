@@ -82,6 +82,9 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
     if let CommandRequest::GenerateCompletions { shell } = &request {
         return generate_shell_completions(*shell);
     }
+    if let CommandRequest::ExecWorker = &request {
+        return zk_fuzzer::executor::run_exec_worker();
+    }
 
     // Initialize logging
     tracing_subscriber::fmt()
@@ -144,7 +147,7 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
             minimize_corpus(&corpus_dir, output.as_deref())
         }
         CommandRequest::Init { output, framework } => generate_sample_config(&output, &framework),
-        CommandRequest::ExecWorker => zk_fuzzer::executor::run_exec_worker(),
+        CommandRequest::ExecWorker => unreachable!("exec worker is handled before logging init"),
         CommandRequest::MissingCommand => anyhow::bail!(
             "No command provided. Use `zk-fuzzer scan <pattern.yaml> --target-circuit <path> --main-component <name> --framework <fw>`."
         ),

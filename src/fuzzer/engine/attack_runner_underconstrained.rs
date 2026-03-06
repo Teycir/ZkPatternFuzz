@@ -23,16 +23,6 @@ impl FuzzingEngine {
             "Testing {} witness pairs for underconstrained circuits",
             witness_pairs
         );
-        {
-            use crate::oracles::UnderconstrainedDetector;
-            let tolerance = config.get("tolerance").and_then(|v| v.as_f64());
-            let detector = if let Some(tol) = tolerance {
-                UnderconstrainedDetector::new(witness_pairs).with_tolerance(tol)
-            } else {
-                UnderconstrainedDetector::new(witness_pairs)
-            };
-            self.add_attack_findings(&detector, witness_pairs, progress)?;
-        }
 
         let inputs_reconciled = self
             .config
@@ -439,11 +429,37 @@ impl FuzzingEngine {
             tracing::warn!(
                 "Skipping frozen-wire follow-up: underconstrained attack already hit wall-clock timeout"
             );
+            if path_probe_inputs.is_empty() {
+                self.run_generic_underconstrained_detector(config, witness_pairs, progress)?;
+            } else {
+                tracing::warn!(
+                    "Skipping generic underconstrained detector: targeted path-selector probe already consumed the wall-clock budget"
+                );
+            }
             return Ok(());
         }
 
         self.run_frozen_wire_detector(config, progress)?;
+        self.run_generic_underconstrained_detector(config, witness_pairs, progress)?;
 
+        Ok(())
+    }
+
+    fn run_generic_underconstrained_detector(
+        &self,
+        config: &serde_yaml::Value,
+        witness_pairs: usize,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        use crate::oracles::UnderconstrainedDetector;
+
+        let tolerance = config.get("tolerance").and_then(|v| v.as_f64());
+        let detector = if let Some(tol) = tolerance {
+            UnderconstrainedDetector::new(witness_pairs).with_tolerance(tol)
+        } else {
+            UnderconstrainedDetector::new(witness_pairs)
+        };
+        self.add_attack_findings(&detector, witness_pairs, progress)?;
         Ok(())
     }
 

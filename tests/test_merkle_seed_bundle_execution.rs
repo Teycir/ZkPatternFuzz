@@ -1,10 +1,43 @@
-use std::path::PathBuf;
+use std::ffi::OsString;
 use std::sync::Arc;
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use num_bigint::BigUint;
 use tempfile::TempDir;
 use zk_core::{CircuitExecutor, FieldElement, Framework};
 use zk_fuzzer::executor::{ExecutorFactory, ExecutorFactoryOptions, IsolatedExecutor};
+
+fn env_lock() -> MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+struct EnvVarRestore {
+    key: &'static str,
+    value: Option<OsString>,
+}
+
+impl Drop for EnvVarRestore {
+    fn drop(&mut self) {
+        if let Some(value) = &self.value {
+            std::env::set_var(self.key, value);
+        } else {
+            std::env::remove_var(self.key);
+        }
+    }
+}
+
+fn set_exec_worker_env() -> EnvVarRestore {
+    let key = "ZK_FUZZER_EXEC_WORKER";
+    let previous = std::env::var_os(key);
+    std::env::set_var(key, env!("CARGO_BIN_EXE_zk-fuzzer"));
+    EnvVarRestore {
+        key,
+        value: previous,
+    }
+}
 
 fn parse_decimal_field(raw: &str) -> FieldElement {
     let value = BigUint::parse_bytes(raw.as_bytes(), 10).expect("valid decimal field element");
@@ -79,6 +112,8 @@ fn merkle_seed_bundle_executes_in_direct_circom_executor() {
 
 #[test]
 fn merkle_seed_bundle_executes_in_isolated_circom_executor() {
+    let _guard = env_lock();
+    let _worker_env = set_exec_worker_env();
     let build_dir = TempDir::new().expect("temp build dir");
     let options = executor_options(&build_dir);
     let inner = ExecutorFactory::create_with_options(
