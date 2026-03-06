@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 
 pub const POST_ROADMAP_SCHEMA_VERSION: &str = "1";
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash, Ord, PartialOrd, Default)]
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash, Ord, PartialOrd, Default,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum TrackKind {
     #[default]
@@ -27,7 +29,6 @@ impl TrackKind {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Default)]
 pub struct TrackInput {
     pub campaign_id: String,
@@ -40,7 +41,9 @@ pub struct TrackInput {
     pub metadata: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash, Ord, PartialOrd, Default)]
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash, Ord, PartialOrd, Default,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum FindingSeverity {
     Info,
@@ -50,7 +53,6 @@ pub enum FindingSeverity {
     High,
     Critical,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Default)]
 pub struct TrackFinding {
