@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 use zk_fuzzer::config::{AttackType, FuzzConfig};
 use zk_fuzzer::fuzzer::FuzzingEngine;
+use zk_fuzzer::FuzzReport;
 
 const RUN_FP_ANALYSIS_ENV: &str = "ZKFUZZ_RUN_FP_ANALYSIS";
 
@@ -29,6 +30,25 @@ fn maybe_skip_fp_analysis(test_name: &str) -> bool {
         test_name, RUN_FP_ANALYSIS_ENV
     );
     true
+}
+
+fn is_missing_circom_backend_error(err: &anyhow::Error) -> bool {
+    let text = err.to_string();
+    text.contains("Circom backend required but not available")
+        || text.contains("circom not found in PATH")
+}
+
+fn run_fp_campaign_or_skip(config: FuzzConfig, test_name: &str) -> Option<FuzzReport> {
+    let mut engine = match FuzzingEngine::new(config, Some(42), 1) {
+        Ok(engine) => engine,
+        Err(err) if is_missing_circom_backend_error(&err) => {
+            eprintln!("Skipping {}: {}", test_name, err);
+            return None;
+        }
+        Err(err) => panic!("{}: Failed to init engine: {}", test_name, err),
+    };
+    let rt = tokio::runtime::Runtime::new().expect("runtime");
+    Some(rt.block_on(async { engine.run(None).await.expect("run should succeed") }))
 }
 
 fn attack_type_yaml_name(attack_type: &AttackType) -> String {
@@ -198,14 +218,9 @@ fn test_fp_rate_audited_circuits() {
     for circuit in &safe_circuits {
         let config = create_fp_test_campaign(circuit, iterations);
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let report = rt.block_on(async {
-            let mut engine = match FuzzingEngine::new(config, Some(42), 1) {
-                Ok(engine) => engine,
-                Err(e) => panic!("Failed to init engine for {}: {}", circuit, e),
-            };
-            engine.run(None).await.unwrap()
-        });
+        let Some(report) = run_fp_campaign_or_skip(config, "test_fp_rate_audited_circuits") else {
+            continue;
+        };
 
         results.add_findings(circuit, &report.findings);
 
@@ -252,14 +267,9 @@ fn test_fp_rate_verified_circuits() {
     for circuit in &verified_circuits {
         let config = create_fp_test_campaign(circuit, iterations);
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let report = rt.block_on(async {
-            let mut engine = match FuzzingEngine::new(config, Some(42), 1) {
-                Ok(engine) => engine,
-                Err(e) => panic!("Failed to init engine for {}: {}", circuit, e),
-            };
-            engine.run(None).await.unwrap()
-        });
+        let Some(report) = run_fp_campaign_or_skip(config, "test_fp_rate_verified_circuits") else {
+            continue;
+        };
 
         results.add_findings(circuit, &report.findings);
     }
@@ -352,11 +362,10 @@ reporting:
                 ),
             };
 
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            let report = rt.block_on(async {
-                let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
-                engine.run(None).await.unwrap()
-            });
+            let Some(report) = run_fp_campaign_or_skip(config, "test_fp_rate_by_attack_type")
+            else {
+                continue;
+            };
 
             total += 1;
             if !report.findings.is_empty() {
@@ -445,11 +454,9 @@ reporting:
             ),
         };
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let report = rt.block_on(async {
-            let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
-            engine.run(None).await.unwrap()
-        });
+        let Some(report) = run_fp_campaign_or_skip(config, "test_oracle_threshold_tuning") else {
+            continue;
+        };
 
         let findings_count = report.findings.len();
         let high_confidence: usize = report

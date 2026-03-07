@@ -23,6 +23,12 @@ use std::path::PathBuf;
 const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
 const RUN_ZK0D_REALISTIC_TESTS_ENV: &str = "ZKFUZZ_RUN_ZK0D_REALISTIC_TESTS";
 
+fn is_missing_circom_backend_error(err: &anyhow::Error) -> bool {
+    let text = err.to_string();
+    text.contains("Circom backend required but not available")
+        || text.contains("circom not found in PATH")
+}
+
 fn should_run_zk0d_realistic_tests() -> bool {
     std::env::var(RUN_ZK0D_REALISTIC_TESTS_ENV)
         .map(|value| {
@@ -54,6 +60,22 @@ fn zk0d_base() -> PathBuf {
 /// Check if real circuit test fixtures are available
 fn zk0d_available() -> bool {
     zk0d_base().exists()
+}
+
+fn create_engine_or_skip(
+    config: zk_fuzzer::config::FuzzConfig,
+    seed: Option<u64>,
+    workers: usize,
+    test_name: &str,
+) -> Option<zk_fuzzer::fuzzer::FuzzingEngine> {
+    match zk_fuzzer::fuzzer::FuzzingEngine::new(config, seed, workers) {
+        Ok(engine) => Some(engine),
+        Err(err) if is_missing_circom_backend_error(&err) => {
+            println!("Skipping {test_name}: {err}");
+            None
+        }
+        Err(err) => panic!("{test_name}: engine init failed: {err:#}"),
+    }
 }
 
 /// Get path to Tornado Cash circuits
@@ -215,7 +237,6 @@ async fn test_continuous_fuzzing_realistic_iteration_count() {
     }
 
     use zk_fuzzer::config::*;
-    use zk_fuzzer::fuzzer::FuzzingEngine;
 
     let config = FuzzConfig {
         campaign: Campaign {
@@ -264,7 +285,14 @@ async fn test_continuous_fuzzing_realistic_iteration_count() {
         chains: vec![],
     };
 
-    let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
+    let Some(mut engine) = create_engine_or_skip(
+        config,
+        Some(42),
+        1,
+        "test_continuous_fuzzing_realistic_iteration_count",
+    ) else {
+        return;
+    };
     let report = engine.run(None).await.unwrap();
 
     // Phase 0 Success Metric: Fuzzing loop runs >50 iterations
@@ -294,7 +322,6 @@ async fn test_all_five_novel_attacks_dispatch() {
     }
 
     use zk_fuzzer::config::*;
-    use zk_fuzzer::fuzzer::FuzzingEngine;
 
     let novel_attacks = vec![
         (AttackType::ConstraintInference, "constraint_inference"),
@@ -349,7 +376,11 @@ async fn test_all_five_novel_attacks_dispatch() {
             chains: vec![],
         };
 
-        let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
+        let Some(mut engine) =
+            create_engine_or_skip(config, Some(42), 1, "test_all_five_novel_attacks_dispatch")
+        else {
+            return;
+        };
         let result = engine.run(None).await;
 
         assert!(

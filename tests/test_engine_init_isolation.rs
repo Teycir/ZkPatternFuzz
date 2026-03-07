@@ -5,6 +5,12 @@ use tracing_subscriber::fmt::MakeWriter;
 use zk_fuzzer::config::*;
 use zk_fuzzer::fuzzer::FuzzingEngine;
 
+fn is_missing_circom_backend_error(err: &anyhow::Error) -> bool {
+    let text = err.to_string();
+    text.contains("Circom backend required but not available")
+        || text.contains("circom not found in PATH")
+}
+
 fn build_isolation_config(build_dir: &str, explicit_limit_mb: Option<u64>) -> FuzzConfig {
     let mut additional = AdditionalConfig::default();
     additional.insert(
@@ -77,7 +83,8 @@ fn env_lock() -> &'static Mutex<()> {
     ENV_LOCK.get_or_init(|| Mutex::new(()))
 }
 
-fn capture_engine_init_logs(config: FuzzConfig) -> String {
+fn capture_engine_init_logs(config: FuzzConfig, test_name: &str) -> Option<String> {
+    let skipped = Arc::new(Mutex::new(false));
     let captured = Arc::new(Mutex::new(Vec::new()));
     let subscriber = tracing_subscriber::fmt()
         .with_ansi(false)
@@ -85,12 +92,24 @@ fn capture_engine_init_logs(config: FuzzConfig) -> String {
         .with_writer(BufferWriter(captured.clone()))
         .finish();
 
+    let skipped_for_closure = skipped.clone();
     tracing::subscriber::with_default(subscriber, || {
-        FuzzingEngine::new(config, Some(31), 1).expect("engine init should succeed");
+        match FuzzingEngine::new(config, Some(31), 1) {
+            Ok(_) => {}
+            Err(err) if is_missing_circom_backend_error(&err) => {
+                *skipped_for_closure.lock().expect("skip flag lock") = true;
+                println!("Skipping {test_name}: {err}");
+            }
+            Err(err) => panic!("{test_name}: engine init should succeed: {err:#}"),
+        }
     });
 
+    if *skipped.lock().expect("skip flag lock") {
+        return None;
+    }
+
     let bytes = captured.lock().expect("log buffer lock").clone();
-    String::from_utf8(bytes).expect("utf8 log buffer")
+    Some(String::from_utf8(bytes).expect("utf8 log buffer"))
 }
 
 #[test]
@@ -99,10 +118,12 @@ fn circom_isolation_default_disables_rlimit_as_when_unset() {
     let prior_env = std::env::var("ZK_FUZZER_ISOLATION_MEMORY_LIMIT_MB").ok();
     std::env::remove_var("ZK_FUZZER_ISOLATION_MEMORY_LIMIT_MB");
 
-    let logs = capture_engine_init_logs(build_isolation_config(
-        "/tmp/zkfuzz_tests/engine_isolation_default",
-        None,
-    ));
+    let Some(logs) = capture_engine_init_logs(
+        build_isolation_config("/tmp/zkfuzz_tests/engine_isolation_default", None),
+        "circom_isolation_default_disables_rlimit_as_when_unset",
+    ) else {
+        return;
+    };
 
     match prior_env {
         Some(value) => std::env::set_var("ZK_FUZZER_ISOLATION_MEMORY_LIMIT_MB", value),
@@ -127,10 +148,12 @@ fn circom_isolation_honors_explicit_memory_cap() {
     let prior_env = std::env::var("ZK_FUZZER_ISOLATION_MEMORY_LIMIT_MB").ok();
     std::env::remove_var("ZK_FUZZER_ISOLATION_MEMORY_LIMIT_MB");
 
-    let logs = capture_engine_init_logs(build_isolation_config(
-        "/tmp/zkfuzz_tests/engine_isolation_explicit",
-        Some(1024),
-    ));
+    let Some(logs) = capture_engine_init_logs(
+        build_isolation_config("/tmp/zkfuzz_tests/engine_isolation_explicit", Some(1024)),
+        "circom_isolation_honors_explicit_memory_cap",
+    ) else {
+        return;
+    };
 
     match prior_env {
         Some(value) => std::env::set_var("ZK_FUZZER_ISOLATION_MEMORY_LIMIT_MB", value),

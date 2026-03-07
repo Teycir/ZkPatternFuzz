@@ -8,6 +8,7 @@
 use std::path::PathBuf;
 use zk_fuzzer::config::{AttackType, FuzzConfig};
 use zk_fuzzer::fuzzer::FuzzingEngine;
+use zk_fuzzer::FuzzReport;
 
 const RUN_GROUND_TRUTH_REGRESSION_ENV: &str = "ZKFUZZ_RUN_GROUND_TRUTH_REGRESSION";
 
@@ -29,6 +30,25 @@ fn maybe_skip_ground_truth_regression(test_name: &str) -> bool {
         test_name, RUN_GROUND_TRUTH_REGRESSION_ENV
     );
     true
+}
+
+fn is_missing_circom_backend_error(err: &anyhow::Error) -> bool {
+    let text = err.to_string();
+    text.contains("Circom backend required but not available")
+        || text.contains("circom not found in PATH")
+}
+
+fn run_ground_truth_campaign_or_skip(config: FuzzConfig, test_name: &str) -> Option<FuzzReport> {
+    let mut engine = match FuzzingEngine::new(config, Some(42), 1) {
+        Ok(engine) => engine,
+        Err(err) if is_missing_circom_backend_error(&err) => {
+            eprintln!("Skipping {}: {}", test_name, err);
+            return None;
+        }
+        Err(err) => panic!("{}: engine init failed: {:#}", test_name, err),
+    };
+    let rt = tokio::runtime::Runtime::new().expect("runtime");
+    Some(rt.block_on(async { engine.run(None).await.expect("run should succeed") }))
 }
 
 /// Helper to create a campaign config for a ground truth circuit
@@ -128,12 +148,9 @@ fn test_detects_merkle_unconstrained() {
         vec![AttackType::Underconstrained],
         10_000,
     );
-
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let report = rt.block_on(async {
-        let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
-        engine.run(None).await.unwrap()
-    });
+    let Some(report) = run_ground_truth_campaign_or_skip(config, "ground_truth_regression") else {
+        return;
+    };
 
     // Should detect the underconstrained path index
     let has_underconstrained = report
@@ -166,12 +183,9 @@ fn test_detects_range_overflow() {
         vec![AttackType::ArithmeticOverflow, AttackType::Boundary],
         10_000,
     );
-
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let report = rt.block_on(async {
-        let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
-        engine.run(None).await.unwrap()
-    });
+    let Some(report) = run_ground_truth_campaign_or_skip(config, "ground_truth_regression") else {
+        return;
+    };
 
     let has_overflow = report.findings.iter().any(|f| {
         matches!(
@@ -196,12 +210,9 @@ fn test_detects_nullifier_collision() {
 
     let config =
         create_ground_truth_campaign("nullifier_collision", vec![AttackType::Collision], 10_000);
-
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let report = rt.block_on(async {
-        let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
-        engine.run(None).await.unwrap()
-    });
+    let Some(report) = run_ground_truth_campaign_or_skip(config, "ground_truth_regression") else {
+        return;
+    };
 
     let has_collision = report
         .findings
@@ -227,12 +238,9 @@ fn test_detects_bit_decomposition_unconstrained() {
         vec![AttackType::Underconstrained],
         10_000,
     );
-
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let report = rt.block_on(async {
-        let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
-        engine.run(None).await.unwrap()
-    });
+    let Some(report) = run_ground_truth_campaign_or_skip(config, "ground_truth_regression") else {
+        return;
+    };
 
     let has_underconstrained = report
         .findings
@@ -258,12 +266,9 @@ fn test_detects_eddsa_malleability() {
         vec![AttackType::Boundary, AttackType::Soundness],
         10_000,
     );
-
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let report = rt.block_on(async {
-        let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
-        engine.run(None).await.unwrap()
-    });
+    let Some(report) = run_ground_truth_campaign_or_skip(config, "ground_truth_regression") else {
+        return;
+    };
 
     let has_malleability = report.findings.iter().any(|f| {
         matches!(
@@ -291,12 +296,9 @@ fn test_detects_public_input_leak() {
         vec![AttackType::Underconstrained],
         10_000,
     );
-
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let report = rt.block_on(async {
-        let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
-        engine.run(None).await.unwrap()
-    });
+    let Some(report) = run_ground_truth_campaign_or_skip(config, "ground_truth_regression") else {
+        return;
+    };
 
     let has_leak = report
         .findings
@@ -322,12 +324,9 @@ fn test_detects_division_by_zero() {
         vec![AttackType::ArithmeticOverflow, AttackType::Boundary],
         10_000,
     );
-
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let report = rt.block_on(async {
-        let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
-        engine.run(None).await.unwrap()
-    });
+    let Some(report) = run_ground_truth_campaign_or_skip(config, "ground_truth_regression") else {
+        return;
+    };
 
     let has_div_zero = report.findings.iter().any(|f| {
         matches!(
@@ -352,12 +351,9 @@ fn test_detects_hash_length_extension() {
 
     let config =
         create_ground_truth_campaign("hash_length_extension", vec![AttackType::Soundness], 10_000);
-
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let report = rt.block_on(async {
-        let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
-        engine.run(None).await.unwrap()
-    });
+    let Some(report) = run_ground_truth_campaign_or_skip(config, "ground_truth_regression") else {
+        return;
+    };
 
     let has_hash_vuln = report
         .findings
@@ -383,12 +379,9 @@ fn test_detects_multiexp_soundness() {
         vec![AttackType::Underconstrained],
         10_000,
     );
-
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let report = rt.block_on(async {
-        let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
-        engine.run(None).await.unwrap()
-    });
+    let Some(report) = run_ground_truth_campaign_or_skip(config, "ground_truth_regression") else {
+        return;
+    };
 
     let has_multiexp = report
         .findings
@@ -414,12 +407,9 @@ fn test_detects_commitment_not_binding() {
         vec![AttackType::Underconstrained, AttackType::Collision],
         10_000,
     );
-
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let report = rt.block_on(async {
-        let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
-        engine.run(None).await.unwrap()
-    });
+    let Some(report) = run_ground_truth_campaign_or_skip(config, "ground_truth_regression") else {
+        return;
+    };
 
     let has_finding = report.findings.iter().any(|f| {
         matches!(
@@ -460,12 +450,10 @@ fn test_ground_truth_detection_rate() {
 
     for (circuit, expected_attack) in &test_cases {
         let config = create_ground_truth_campaign(circuit, vec![expected_attack.clone()], 5_000);
-
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let report = rt.block_on(async {
-            let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
-            engine.run(None).await.unwrap()
-        });
+        let Some(report) = run_ground_truth_campaign_or_skip(config, "ground_truth_regression")
+        else {
+            return;
+        };
 
         if report
             .findings

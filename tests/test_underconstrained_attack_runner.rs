@@ -4,6 +4,28 @@ use tempfile::{NamedTempFile, TempDir};
 use zk_fuzzer::config::*;
 use zk_fuzzer::fuzzer::FuzzingEngine;
 
+fn is_missing_circom_backend_error(err: &anyhow::Error) -> bool {
+    let text = err.to_string();
+    text.contains("Circom backend required but not available")
+        || text.contains("circom not found in PATH")
+}
+
+fn create_engine_or_skip(
+    config: FuzzConfig,
+    seed: Option<u64>,
+    workers: usize,
+    test_name: &str,
+) -> Option<FuzzingEngine> {
+    match FuzzingEngine::new(config, seed, workers) {
+        Ok(engine) => Some(engine),
+        Err(err) if is_missing_circom_backend_error(&err) => {
+            println!("Skipping {test_name}: {err}");
+            None
+        }
+        Err(err) => panic!("{test_name}: engine init should succeed: {err:#}"),
+    }
+}
+
 fn build_underconstrained_config(circuit_path: &str, main_component: &str) -> FuzzConfig {
     FuzzConfig {
         campaign: Campaign {
@@ -80,7 +102,14 @@ async fn underconstrained_runner_errors_when_no_executable_witness_exists() {
     let build_dir = temp_circom_build_dir("underconstrained_unsat");
     configure_underconstrained_runtime(&mut config, &build_dir);
 
-    let mut engine = FuzzingEngine::new(config, Some(7), 1).expect("engine init should succeed");
+    let Some(mut engine) = create_engine_or_skip(
+        config,
+        Some(7),
+        1,
+        "underconstrained_runner_errors_when_no_executable_witness_exists",
+    ) else {
+        return;
+    };
     let err = engine
         .run(None)
         .await
@@ -118,7 +147,14 @@ async fn underconstrained_runner_uses_external_witness_seeds_directly() {
         serde_yaml::Value::String(seed_file.path().display().to_string()),
     );
 
-    let mut engine = FuzzingEngine::new(config, Some(23), 1).expect("engine init should succeed");
+    let Some(mut engine) = create_engine_or_skip(
+        config,
+        Some(23),
+        1,
+        "underconstrained_runner_uses_external_witness_seeds_directly",
+    ) else {
+        return;
+    };
     let report = engine.run(None).await.expect("run should succeed");
 
     let has_underconstrained = report
@@ -186,7 +222,14 @@ async fn underconstrained_runner_adds_behavioral_confirmation_for_non_binary_pat
         serde_yaml::Value::String(seed_file.path().display().to_string()),
     );
 
-    let mut engine = FuzzingEngine::new(config, Some(29), 1).expect("engine init should succeed");
+    let Some(mut engine) = create_engine_or_skip(
+        config,
+        Some(29),
+        1,
+        "underconstrained_runner_adds_behavioral_confirmation_for_non_binary_path_selectors",
+    ) else {
+        return;
+    };
     let report = engine.run(None).await.expect("run should succeed");
 
     let attack_types: Vec<_> = report
