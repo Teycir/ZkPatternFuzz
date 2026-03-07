@@ -477,7 +477,13 @@ jobs:
           command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
           z3 --version
 
-      - name: Verify coverage toolchain availability (pre-provisioned)
+      - name: Install coverage toolchain if missing
+        run: |
+          if ! command -v cargo-llvm-cov >/dev/null 2>&1; then
+            cargo install --locked cargo-llvm-cov
+          fi
+
+      - name: Verify coverage toolchain availability
         run: |
           command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "::error::cargo-llvm-cov not found in PATH"; exit 1; }
       
