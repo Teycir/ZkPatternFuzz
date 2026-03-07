@@ -7,6 +7,7 @@ license = "MIT"
 authors = ["Teycir Ben Soltane <teycir@pxdmail.net>"]
 homepage = "https://teycirbensoltane.tn"
 repository = "https://github.com/Teycir/ZkPatternFuzz"
+autobins = false
 
 [workspace]
 members = [
@@ -114,4 +115,24 @@ incremental = false
 [[bin]]
 name = "zk-fuzzer"
 path = "src/main.rs"
+bench = false
+
+[[bin]]
+name = "zk0d_batch"
+path = "src/bin/zk0d_batch.rs"
+bench = false
+
+[[bin]]
+name = "zk0d_benchmark"
+path = "src/bin/zk0d_benchmark.rs"
+bench = false
+
+[[bin]]
+name = "zkf_checks"
+path = "src/bin/zkf_checks.rs"
+bench = false
+
+[[bin]]
+name = "zkpatternfuzz"
+path = "src/bin/zkpatternfuzz.rs"
 bench = false
