@@ -330,6 +330,7 @@ fn test_corpus_priority_ordering_under_contention() {
 
 #[test]
 // Run with --ignored for extended stress testing
+#[ignore = "long-running stress simulation; run manually with -- --ignored"]
 fn test_extended_stress_24_hour_simulation() {
     // Simulate 24 hours of fuzzing in compressed time
     const SIMULATION_DURATION_SECS: u64 = 60; // 1 minute = simulated 24 hours
