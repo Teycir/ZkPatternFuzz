@@ -1149,11 +1149,28 @@ impl CairoTarget {
     /// Compile Cairo 0 program
     fn compile_cairo0(&mut self) -> Result<()> {
         let output_path = self.build_dir.join(format!("{}.json", self.name));
-        let source_path_str = self.source_path.to_str().ok_or_else(|| {
-            anyhow::anyhow!("Non-UTF8 Cairo source path: {}", self.source_path.display())
+        let compile_cwd = self
+            .source_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let source_arg = self
+            .source_path
+            .file_name()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| self.source_path.clone());
+        let output_arg = output_path
+            .strip_prefix(&compile_cwd)
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|_| output_path.clone());
+        let source_path_str = source_arg.to_str().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Non-UTF8 Cairo source compile path '{}'",
+                source_arg.display()
+            )
         })?;
-        let output_path_str = output_path.to_str().ok_or_else(|| {
-            anyhow::anyhow!("Non-UTF8 Cairo output path: {}", output_path.display())
+        let output_path_str = output_arg.to_str().ok_or_else(|| {
+            anyhow::anyhow!("Non-UTF8 Cairo output path: {}", output_arg.display())
         })?;
 
         let mut args = vec![
@@ -1170,6 +1187,10 @@ impl CairoTarget {
 
         let output = {
             let mut cmd = Command::new("cairo-compile");
+            // Compile from the source directory so emitted program metadata keeps
+            // portable relative filenames instead of embedding repo-specific
+            // absolute paths.
+            cmd.current_dir(&compile_cwd);
             cmd.args(&args);
             crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
                 .context("Failed to run cairo-compile")?

@@ -8,6 +8,7 @@
 //! - snarkjs available on local PATH
 
 use std::path::PathBuf;
+use tempfile::TempDir;
 use zk_fuzzer::fuzzer::FieldElement;
 use zk_fuzzer::targets::{CircomTarget, TargetCircuit};
 
@@ -48,6 +49,24 @@ fn test_circuit_path(name: &str) -> PathBuf {
         .join(format!("{}.circom", name))
 }
 
+fn ptau_fixture_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("circuits")
+        .join("build")
+        .join("pot12_final.ptau")
+}
+
+fn isolated_target(name: &str, component: &str) -> (TempDir, CircomTarget) {
+    let circuit_path = test_circuit_path(name);
+    let build_dir = tempfile::tempdir().expect("temp circom build dir");
+    let target = CircomTarget::new(circuit_path.to_str().unwrap(), component)
+        .expect("Failed to create CircomTarget")
+        .with_build_dir(build_dir.path().to_path_buf())
+        .with_ptau_path(ptau_fixture_path());
+    (build_dir, target)
+}
+
 /// Test that circom and snarkjs are available
 #[test]
 fn test_circom_snarkjs_available() {
@@ -66,8 +85,7 @@ fn test_multiplier_compilation() {
         panic!("Test circuit not found at {:?}", circuit_path);
     }
 
-    let mut target = CircomTarget::new(circuit_path.to_str().unwrap(), "Multiplier")
-        .expect("Failed to create CircomTarget");
+    let (_build_dir, mut target) = isolated_target("multiplier", "Multiplier");
 
     // Compile the circuit
     target.compile().expect("Circuit compilation failed");
@@ -95,10 +113,7 @@ fn test_multiplier_witness_generation() {
     if !require_circom_and_snarkjs() {
         return;
     }
-    let circuit_path = test_circuit_path("multiplier");
-
-    let mut target = CircomTarget::new(circuit_path.to_str().unwrap(), "Multiplier")
-        .expect("Failed to create CircomTarget");
+    let (_build_dir, mut target) = isolated_target("multiplier", "Multiplier");
 
     target.compile().expect("Compilation failed");
 
@@ -123,10 +138,7 @@ fn test_multiplier_proof_generation() {
     if !require_circom_and_snarkjs() {
         return;
     }
-    let circuit_path = test_circuit_path("multiplier");
-
-    let mut target = CircomTarget::new(circuit_path.to_str().unwrap(), "Multiplier")
-        .expect("Failed to create CircomTarget");
+    let (_build_dir, mut target) = isolated_target("multiplier", "Multiplier");
 
     target.compile().expect("Compilation failed");
     target.setup_keys().expect("Key setup failed");
@@ -157,10 +169,7 @@ fn test_range_check_circuit() {
     if !require_circom_and_snarkjs() {
         return;
     }
-    let circuit_path = test_circuit_path("range_check");
-
-    let mut target = CircomTarget::new(circuit_path.to_str().unwrap(), "RangeCheck")
-        .expect("Failed to create CircomTarget");
+    let (_build_dir, mut target) = isolated_target("range_check", "RangeCheck");
 
     target.compile().expect("Compilation failed");
 
@@ -188,10 +197,7 @@ fn test_arithmetic_boundaries() {
     if !require_circom_and_snarkjs() {
         return;
     }
-    let circuit_path = test_circuit_path("multiplier");
-
-    let mut target = CircomTarget::new(circuit_path.to_str().unwrap(), "Multiplier")
-        .expect("Failed to create CircomTarget");
+    let (_build_dir, mut target) = isolated_target("multiplier", "Multiplier");
 
     target.compile().expect("Compilation failed");
 
@@ -239,8 +245,7 @@ fn test_full_backend_verification() {
         return;
     }
 
-    let mut target = CircomTarget::new(circuit_path.to_str().unwrap(), "Multiplier")
-        .expect("Failed to create target");
+    let (_build_dir, mut target) = isolated_target("multiplier", "Multiplier");
 
     target.compile().expect("Compilation failed");
     println!(

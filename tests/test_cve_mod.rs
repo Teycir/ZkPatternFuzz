@@ -142,6 +142,47 @@ vulnerabilities:
 }
 
 #[test]
+fn strict_fixture_validation_accepts_explicit_raw_field_literals() {
+    let yaml = r#"
+version: "1.0"
+last_updated: "2026-03-07"
+vulnerabilities:
+  - id: "ZK-STRICT-RAW"
+    name: "Strict Fixture Raw"
+    severity: "high"
+    affected_circuits:
+      - pattern: "strict_raw"
+        versions: ["*"]
+    sources: []
+    description: "strict fixture"
+    detection:
+      oracle: "range"
+      attack_type: "boundary"
+      procedure: []
+    regression_test:
+      enabled: true
+      circuit_path: "tests/circuits/safe/simple_multiplier.circom"
+      test_cases:
+        - name: "raw_case"
+          inputs:
+            a: "raw:0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"
+            b: "raw:p+1"
+          expected_result: "valid"
+      assertion: "fixture"
+    remediation:
+      description: "n/a"
+"#;
+
+    let path = write_temp_yaml(yaml);
+    let result = CveDatabase::load_strict(&path);
+    let _ = fs::remove_file(path);
+    assert!(
+        result.is_ok(),
+        "expected explicit raw field literals to be accepted"
+    );
+}
+
+#[test]
 fn strict_fixture_validation_rejects_ambiguous_fixture() {
     let yaml = r#"
 version: "1.0"

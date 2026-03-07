@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tempfile::NamedTempFile;
+use tempfile::{NamedTempFile, TempDir};
 use zk_fuzzer::config::*;
 use zk_fuzzer::fuzzer::FuzzingEngine;
 
@@ -47,17 +47,21 @@ witness_pairs: 16
     }
 }
 
-#[tokio::test]
-async fn underconstrained_runner_errors_when_no_executable_witness_exists() {
-    let mut config =
-        build_underconstrained_config("tests/fixtures/underconstrained_unsat.circom", "main");
+fn temp_circom_build_dir(name: &str) -> TempDir {
+    tempfile::Builder::new()
+        .prefix(&format!("zkfuzz_{name}_"))
+        .tempdir()
+        .expect("temp circom build dir")
+}
+
+fn configure_underconstrained_runtime(config: &mut FuzzConfig, build_dir: &TempDir) {
     config.campaign.parameters.additional.insert(
         "fuzzing_iterations".to_string(),
         serde_yaml::Value::Number(1.into()),
     );
     config.campaign.parameters.additional.insert(
         "fuzzing_timeout_seconds".to_string(),
-        serde_yaml::Value::Number(5.into()),
+        serde_yaml::Value::Number(15.into()),
     );
     config.campaign.parameters.additional.insert(
         "symbolic_enabled".to_string(),
@@ -65,8 +69,16 @@ async fn underconstrained_runner_errors_when_no_executable_witness_exists() {
     );
     config.campaign.parameters.additional.insert(
         "circom_build_dir".to_string(),
-        serde_yaml::Value::String("/tmp/zkfuzz_tests/underconstrained_unsat".to_string()),
+        serde_yaml::Value::String(build_dir.path().display().to_string()),
     );
+}
+
+#[tokio::test]
+async fn underconstrained_runner_errors_when_no_executable_witness_exists() {
+    let mut config =
+        build_underconstrained_config("tests/fixtures/underconstrained_unsat.circom", "main");
+    let build_dir = temp_circom_build_dir("underconstrained_unsat");
+    configure_underconstrained_runtime(&mut config, &build_dir);
 
     let mut engine = FuzzingEngine::new(config, Some(7), 1).expect("engine init should succeed");
     let err = engine
@@ -99,27 +111,11 @@ async fn underconstrained_runner_uses_external_witness_seeds_directly() {
         "tests/fixtures/underconstrained_seeded_collision.circom",
         "main",
     );
-    config.campaign.parameters.additional.insert(
-        "fuzzing_iterations".to_string(),
-        serde_yaml::Value::Number(1.into()),
-    );
-    config.campaign.parameters.additional.insert(
-        "fuzzing_timeout_seconds".to_string(),
-        serde_yaml::Value::Number(5.into()),
-    );
-    config.campaign.parameters.additional.insert(
-        "symbolic_enabled".to_string(),
-        serde_yaml::Value::Bool(false),
-    );
+    let build_dir = temp_circom_build_dir("underconstrained_seeded_collision");
+    configure_underconstrained_runtime(&mut config, &build_dir);
     config.campaign.parameters.additional.insert(
         "seed_inputs_path".to_string(),
         serde_yaml::Value::String(seed_file.path().display().to_string()),
-    );
-    config.campaign.parameters.additional.insert(
-        "circom_build_dir".to_string(),
-        serde_yaml::Value::String(
-            "/tmp/zkfuzz_tests/underconstrained_seeded_collision".to_string(),
-        ),
     );
 
     let mut engine = FuzzingEngine::new(config, Some(23), 1).expect("engine init should succeed");
@@ -157,6 +153,7 @@ async fn underconstrained_runner_adds_behavioral_confirmation_for_non_binary_pat
         "tests/fixtures/underconstrained_path_selector_collision.circom",
         "main",
     );
+    let build_dir = temp_circom_build_dir("underconstrained_path_selector_collision");
     config.inputs = vec![
         Input {
             name: "root".to_string(),
@@ -183,27 +180,10 @@ async fn underconstrained_runner_adds_behavioral_confirmation_for_non_binary_pat
             length: Some(2),
         },
     ];
-    config.campaign.parameters.additional.insert(
-        "fuzzing_iterations".to_string(),
-        serde_yaml::Value::Number(1.into()),
-    );
-    config.campaign.parameters.additional.insert(
-        "fuzzing_timeout_seconds".to_string(),
-        serde_yaml::Value::Number(5.into()),
-    );
-    config.campaign.parameters.additional.insert(
-        "symbolic_enabled".to_string(),
-        serde_yaml::Value::Bool(false),
-    );
+    configure_underconstrained_runtime(&mut config, &build_dir);
     config.campaign.parameters.additional.insert(
         "seed_inputs_path".to_string(),
         serde_yaml::Value::String(seed_file.path().display().to_string()),
-    );
-    config.campaign.parameters.additional.insert(
-        "circom_build_dir".to_string(),
-        serde_yaml::Value::String(
-            "/tmp/zkfuzz_tests/underconstrained_path_selector_collision".to_string(),
-        ),
     );
 
     let mut engine = FuzzingEngine::new(config, Some(29), 1).expect("engine init should succeed");

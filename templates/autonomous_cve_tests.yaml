@@ -569,7 +569,7 @@ vulnerabilities:
           expected_result: valid_proof
         - name: field_overflow
           inputs:
-            in: [1, "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"]
+            in: [1, "raw:0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"]
           expected_result: valid_proof
       assertion: "Comparison must handle field overflow correctly"
 
@@ -1107,6 +1107,6 @@ vulnerabilities:
           expected_result: valid_proof
         - name: non_reduced_y
           inputs:
-            point: [1, "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000002"]
+            point: [1, "raw:0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000002"]
           expected_result: valid_proof
       assertion: "Y values must be field-reduced"

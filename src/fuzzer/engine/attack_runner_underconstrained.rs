@@ -341,10 +341,16 @@ impl FuzzingEngine {
             );
         }
 
-        if !timed_out && successful_executions == 0 {
+        if successful_executions == 0 {
+            let timeout_suffix = if timed_out {
+                " before wall-clock timeout"
+            } else {
+                ""
+            };
             anyhow::bail!(
-                "Underconstrained attack could not find any executable witness pairs \
+                "Underconstrained attack could not find any executable witness pairs{} \
                  (attempted={}, failed={}); seed corpus with valid witnesses for this target.",
+                timeout_suffix,
                 test_cases.len(),
                 failed_executions
             );

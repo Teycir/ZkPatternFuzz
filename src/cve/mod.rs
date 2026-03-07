@@ -934,6 +934,13 @@ fn is_strict_fixture_string_literal(value: &str) -> bool {
     if let Some(rest) = trimmed.strip_prefix("random_") {
         return !rest.is_empty() && rest.chars().all(|ch| ch.is_ascii_digit());
     }
+    if let Some(raw_inner) = trimmed.strip_prefix("raw:") {
+        let raw_inner = raw_inner.trim();
+        return !raw_inner.is_empty()
+            && (is_decimal_literal(raw_inner)
+                || is_hex_literal(raw_inner)
+                || is_field_placeholder_literal(raw_inner));
+    }
     if is_decimal_literal(trimmed) || is_hex_literal(trimmed) {
         return true;
     }
