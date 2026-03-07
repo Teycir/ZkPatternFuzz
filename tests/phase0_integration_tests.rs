@@ -402,9 +402,12 @@ async fn test_witness_collision_attack_dispatch() {
         }),
     }];
 
-    let Some(mut engine) =
-        create_engine_or_skip(config, Some(42), 1, "test_witness_collision_attack_dispatch")
-    else {
+    let Some(mut engine) = create_engine_or_skip(
+        config,
+        Some(42),
+        1,
+        "test_witness_collision_attack_dispatch",
+    ) else {
         return;
     };
     let report = engine.run(None).await;
