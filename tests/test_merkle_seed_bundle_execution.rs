@@ -7,6 +7,12 @@ use tempfile::TempDir;
 use zk_core::{CircuitExecutor, FieldElement, Framework};
 use zk_fuzzer::executor::{ExecutorFactory, ExecutorFactoryOptions, IsolatedExecutor};
 
+fn is_missing_circom_backend_error(err: &anyhow::Error) -> bool {
+    let text = err.to_string();
+    text.contains("Circom backend required but not available")
+        || text.contains("circom not found in PATH")
+}
+
 fn env_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
@@ -94,13 +100,19 @@ fn executor_options(build_dir: &TempDir) -> ExecutorFactoryOptions {
 fn merkle_seed_bundle_executes_in_direct_circom_executor() {
     let build_dir = TempDir::new().expect("temp build dir");
     let options = executor_options(&build_dir);
-    let executor = ExecutorFactory::create_with_options(
+    let executor = match ExecutorFactory::create_with_options(
         Framework::Circom,
         "tests/ground_truth_circuits/merkle_unconstrained.circom",
         "main",
         &options,
-    )
-    .expect("create direct executor");
+    ) {
+        Ok(executor) => executor,
+        Err(err) if is_missing_circom_backend_error(&err) => {
+            println!("Skipping merkle_seed_bundle_executes_in_direct_circom_executor: {err}");
+            return;
+        }
+        Err(err) => panic!("create direct executor: {err:#}"),
+    };
 
     let result = executor.execute_sync(&load_first_merkle_seed());
     assert!(
@@ -116,13 +128,19 @@ fn merkle_seed_bundle_executes_in_isolated_circom_executor() {
     let _worker_env = set_exec_worker_env();
     let build_dir = TempDir::new().expect("temp build dir");
     let options = executor_options(&build_dir);
-    let inner = ExecutorFactory::create_with_options(
+    let inner = match ExecutorFactory::create_with_options(
         Framework::Circom,
         "tests/ground_truth_circuits/merkle_unconstrained.circom",
         "main",
         &options,
-    )
-    .expect("create direct executor");
+    ) {
+        Ok(executor) => executor,
+        Err(err) if is_missing_circom_backend_error(&err) => {
+            println!("Skipping merkle_seed_bundle_executes_in_isolated_circom_executor: {err}");
+            return;
+        }
+        Err(err) => panic!("create direct executor: {err:#}"),
+    };
     let isolated = IsolatedExecutor::new(
         Arc::clone(&inner),
         Framework::Circom,
