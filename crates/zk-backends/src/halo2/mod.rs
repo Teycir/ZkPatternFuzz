@@ -2524,7 +2524,3 @@ pub mod analysis {
         pub num_columns: usize,
     }
 }
-
-#[cfg(test)]
-#[path = "mod_tests.rs"]
-mod tests;

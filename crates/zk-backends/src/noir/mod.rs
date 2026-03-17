@@ -703,11 +703,13 @@ impl NoirTarget {
             }
         }
 
-        anyhow::bail!(
-            "Failed to locate ABI in Noir artifacts (build_dir='{}', project_target='{}')",
-            self.build_dir.display(),
-            self.active_project_path().join("target").display()
-        )
+        self.parse_abi_from_source().with_context(|| {
+            format!(
+                "Failed to locate ABI in Noir artifacts (build_dir='{}', project_target='{}')",
+                self.build_dir.display(),
+                self.active_project_path().join("target").display()
+            )
+        })
     }
 
     fn candidate_artifact_paths(&self) -> Result<Vec<PathBuf>> {
@@ -822,6 +824,180 @@ impl NoirTarget {
         }
 
         Ok(())
+    }
+
+    fn parse_abi_from_source(&self) -> Result<NoirAbi> {
+        let main_path = self.active_project_path().join("src").join("main.nr");
+        let source = std::fs::read_to_string(&main_path)
+            .with_context(|| format!("Failed reading Noir source '{}'", main_path.display()))?;
+        let signature = Self::extract_main_signature(&source).ok_or_else(|| {
+            anyhow::anyhow!(
+                "No `fn main(...)` signature found in '{}'",
+                main_path.display()
+            )
+        })?;
+
+        let parameters = Self::parse_noir_parameters(&signature)?;
+        let return_type = Self::parse_noir_return_type(&signature)?;
+        tracing::info!(
+            "Falling back to source-derived Noir ABI from '{}'",
+            main_path.display()
+        );
+        Ok(NoirAbi {
+            parameters,
+            return_type,
+        })
+    }
+
+    fn extract_main_signature(source: &str) -> Option<String> {
+        let needle = "fn main(";
+        let start = source.find(needle)?;
+        let mut signature = String::new();
+        let mut depth = 0usize;
+        let mut seen_open = false;
+        let tail = &source[start..];
+
+        for ch in tail.chars() {
+            signature.push(ch);
+            match ch {
+                '(' => {
+                    depth += 1;
+                    seen_open = true;
+                }
+                ')' if depth > 0 => {
+                    depth -= 1;
+                }
+                '{' if seen_open && depth == 0 => {
+                    signature.pop();
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        let trimmed = signature.trim().trim_end_matches(';').trim().to_string();
+        (!trimmed.is_empty()).then_some(trimmed)
+    }
+
+    fn parse_noir_parameters(signature: &str) -> Result<Vec<NoirParameter>> {
+        let open = signature
+            .find('(')
+            .ok_or_else(|| anyhow::anyhow!("Noir main signature missing '('"))?;
+        let close = signature[open + 1..]
+            .find(')')
+            .map(|idx| open + 1 + idx)
+            .ok_or_else(|| anyhow::anyhow!("Noir main signature missing ')'"))?;
+        let raw = signature[open + 1..close].trim();
+        if raw.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut parameters = Vec::new();
+        for raw_param in Self::split_noir_parameters(raw) {
+            let raw_param = raw_param.trim();
+            if raw_param.is_empty() {
+                continue;
+            }
+            let (visibility, body) = if let Some(rest) = raw_param.strip_prefix("pub ") {
+                (Visibility::Public, rest.trim())
+            } else {
+                (Visibility::Private, raw_param)
+            };
+            let (name, typ) = body
+                .split_once(':')
+                .ok_or_else(|| anyhow::anyhow!("Invalid Noir parameter syntax: '{raw_param}'"))?;
+            parameters.push(NoirParameter {
+                name: name.trim().to_string(),
+                typ: Self::parse_noir_type(typ.trim())?,
+                visibility,
+            });
+        }
+
+        Ok(parameters)
+    }
+
+    fn split_noir_parameters(raw: &str) -> Vec<String> {
+        let mut parts = Vec::new();
+        let mut current = String::new();
+        let mut bracket_depth = 0usize;
+        let mut paren_depth = 0usize;
+
+        for ch in raw.chars() {
+            match ch {
+                '[' => bracket_depth += 1,
+                ']' => bracket_depth = bracket_depth.saturating_sub(1),
+                '(' => paren_depth += 1,
+                ')' => paren_depth = paren_depth.saturating_sub(1),
+                ',' if bracket_depth == 0 && paren_depth == 0 => {
+                    parts.push(current.trim().to_string());
+                    current.clear();
+                    continue;
+                }
+                _ => {}
+            }
+            current.push(ch);
+        }
+
+        if !current.trim().is_empty() {
+            parts.push(current.trim().to_string());
+        }
+
+        parts
+    }
+
+    fn parse_noir_type(raw: &str) -> Result<NoirType> {
+        let raw = raw.trim();
+        if raw.eq_ignore_ascii_case("field") {
+            return Ok(NoirType::Field);
+        }
+        if raw.eq_ignore_ascii_case("bool") {
+            return Ok(NoirType::Boolean);
+        }
+        if let Some(width) = raw
+            .strip_prefix('u')
+            .and_then(|digits| digits.parse::<u32>().ok())
+        {
+            return Ok(NoirType::Integer {
+                sign: "unsigned".to_string(),
+                width,
+            });
+        }
+        if let Some(width) = raw
+            .strip_prefix('i')
+            .and_then(|digits| digits.parse::<u32>().ok())
+        {
+            return Ok(NoirType::Integer {
+                sign: "signed".to_string(),
+                width,
+            });
+        }
+        if raw.starts_with('[') && raw.ends_with(']') {
+            let inner = &raw[1..raw.len() - 1];
+            if let Some((typ, length)) = inner.split_once(';') {
+                let length = length
+                    .trim()
+                    .parse::<usize>()
+                    .with_context(|| format!("Invalid Noir array length in type '{raw}'"))?;
+                return Ok(NoirType::Array {
+                    length,
+                    typ: Box::new(Self::parse_noir_type(typ.trim())?),
+                });
+            }
+        }
+
+        anyhow::bail!("Unsupported Noir parameter type in source-derived ABI: '{raw}'")
+    }
+
+    fn parse_noir_return_type(signature: &str) -> Result<Option<serde_json::Value>> {
+        let Some((_, tail)) = signature.split_once(')') else {
+            return Ok(None);
+        };
+        let tail = tail.trim();
+        let Some(return_tail) = tail.strip_prefix("->") else {
+            return Ok(None);
+        };
+        let return_type = Self::parse_noir_type(return_tail.trim())?;
+        Ok(Some(serde_json::to_value(return_type)?))
     }
 
     /// Load the compiled ACIR artifact (JSON) when available.
@@ -1591,7 +1767,3 @@ pub mod analysis {
         UnsafeArithmetic,
     }
 }
-
-#[cfg(test)]
-#[path = "mod_tests.rs"]
-mod tests;

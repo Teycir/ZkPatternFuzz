@@ -302,6 +302,16 @@ This stages:
 - `snarkjs` from `PATH`
 - `pot12_final.ptau` from the local test fixture
 
+`pot12_final.ptau` is only a small local fixture. Larger external Circom targets can require a bigger ceremony, for example:
+
+```bash
+mkdir -p bins/ptau
+snarkjs powersoftau new bn128 19 bins/ptau/pot19_0000.ptau
+snarkjs powersoftau prepare phase2 bins/ptau/pot19_0000.ptau bins/ptau/pot19_final.ptau
+```
+
+When multiple local `.ptau` files are available, ZkPatternFuzz now prefers one whose power is large enough for the compiled circuit.
+
 ## Benchmarks And Repo Checks
 
 Benchmark runner:

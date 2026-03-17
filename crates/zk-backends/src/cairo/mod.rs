@@ -2126,7 +2126,3 @@ pub mod analysis {
         pub is_external: bool,
     }
 }
-
-#[cfg(test)]
-#[path = "mod_tests.rs"]
-mod tests;

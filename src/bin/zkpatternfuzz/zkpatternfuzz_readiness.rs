@@ -390,20 +390,36 @@ fn ensure_noir_target_shape(target_circuit_path: &Path) -> anyhow::Result<()> {
 
 fn discover_local_ptau() -> Option<PathBuf> {
     let cwd = std::env::current_dir().ok()?;
-    let preferred = cwd.join("bins").join("ptau").join("pot12_final.ptau");
-    if preferred.is_file() {
-        return Some(preferred);
-    }
-
     let ptau_dir = cwd.join("bins").join("ptau");
     let entries = fs::read_dir(ptau_dir).ok()?;
+    let mut best: Option<(u32, PathBuf)> = None;
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().and_then(|v| v.to_str()) == Some("ptau") && path.is_file() {
-            return Some(path);
+        if path.extension().and_then(|v| v.to_str()) != Some("ptau") || !path.is_file() {
+            continue;
+        }
+        let score = ptau_name_power_hint(&path);
+        match &best {
+            Some((best_score, best_path))
+                if *best_score > score || (*best_score == score && best_path <= &path) => {}
+            _ => best = Some((score, path)),
         }
     }
-    None
+    best.map(|(_, path)| path)
+}
+
+fn ptau_name_power_hint(path: &Path) -> u32 {
+    let mut best = 0u32;
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("");
+    for token in stem.split(|ch: char| !ch.is_ascii_digit()) {
+        if let Ok(value) = token.parse::<u32>() {
+            best = value;
+        }
+    }
+    best
 }
 
 fn ensure_circom_ptau_available() -> anyhow::Result<()> {

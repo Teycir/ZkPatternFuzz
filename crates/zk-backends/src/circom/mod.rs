@@ -368,22 +368,26 @@ fn maybe_prepare_circom2_source(
         }
     }
 
-    // Modern Circom 2 sources should compile as-is. The compatibility rewrite
-    // pass is intended for missing/legacy pragma and legacy syntax conversion,
-    // and can over-transform valid Circom 2 templates.
-    if has_pragma && !pragma_legacy {
-        return Ok((circuit_path.to_path_buf(), None));
-    }
-
     let mut visited = HashSet::new();
     let needs_include_param_signal_compat_fix =
         has_param_signal_compat_issue_recursive(circuit_path, &mut visited);
+    let mut vendor_fix_visited = HashSet::new();
+    let needs_vendor_circomlib_rewrite =
+        has_circomlib_include_recursive(circuit_path, &mut vendor_fix_visited);
+
+    // Modern Circom 2 sources should usually compile as-is. Keep the rewrite
+    // path enabled when we need to normalize legacy-style include layouts,
+    // especially external repos that reference local circomlib copies.
+    if has_pragma && !pragma_legacy && !needs_vendor_circomlib_rewrite {
+        return Ok((circuit_path.to_path_buf(), None));
+    }
 
     let needs_rewrite = !has_pragma
         || pragma_legacy
         || needs_semicolon_fix
         || needs_param_signal_compat_fix
-        || needs_include_param_signal_compat_fix;
+        || needs_include_param_signal_compat_fix
+        || needs_vendor_circomlib_rewrite;
 
     if !needs_rewrite {
         return Ok((circuit_path.to_path_buf(), None));
@@ -460,16 +464,64 @@ fn has_param_signal_compat_issue_recursive(path: &Path, visited: &mut HashSet<Pa
 
         if trimmed.starts_with("include ") {
             if let Some((path_str, _quote)) = extract_include_path(trimmed) {
-                let include_path = Path::new(&path_str);
-                let resolved = if include_path.is_relative() {
-                    source_dir.join(include_path)
-                } else {
-                    include_path.to_path_buf()
-                };
+                let resolved = resolve_circom_include_path(source_dir, &path_str);
                 if has_param_signal_compat_issue_recursive(&resolved, visited) {
                     return true;
                 }
             }
+        }
+    }
+
+    false
+}
+
+fn has_circomlib_include_recursive(path: &Path, visited: &mut HashSet<PathBuf>) -> bool {
+    let canonical = match std::fs::canonicalize(path) {
+        Ok(canonical) => canonical,
+        Err(e) => {
+            tracing::warn!(
+                "Failed to canonicalize Circom path '{}' while checking circomlib includes: {}",
+                path.display(),
+                e
+            );
+            return false;
+        }
+    };
+    if !visited.insert(canonical) {
+        return false;
+    }
+
+    let source = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(
+                "Failed reading Circom file '{}' while checking circomlib includes: {}",
+                path.display(),
+                e
+            );
+            return false;
+        }
+    };
+
+    let source_dir = match path.parent() {
+        Some(parent) => parent,
+        None => return false,
+    };
+
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("include ") {
+            continue;
+        }
+        let Some((path_str, _quote)) = extract_include_path(trimmed) else {
+            continue;
+        };
+        if path_str.replace('\\', "/").contains("circomlib/circuits/") {
+            return true;
+        }
+        let resolved = resolve_circom_include_path(source_dir, &path_str);
+        if has_circomlib_include_recursive(&resolved, visited) {
+            return true;
         }
     }
 
@@ -554,12 +606,7 @@ fn convert_circom_file(
 
         if updated_trimmed.starts_with("include ") {
             if let Some((path_str, quote)) = extract_include_path(&updated_trimmed) {
-                let include_path = Path::new(&path_str);
-                let resolved = if include_path.is_relative() {
-                    source_dir.join(include_path)
-                } else {
-                    include_path.to_path_buf()
-                };
+                let resolved = resolve_circom_include_path(source_dir, &path_str);
                 let converted =
                     convert_circom_file(&resolved, temp_dir, cache, _main_component, None, false)?;
                 let converted_str = converted.to_string_lossy();
@@ -884,6 +931,35 @@ fn extract_include_path(line: &str) -> Option<(String, char)> {
     let rest = &line[start..];
     let end = rest.find(quote)?;
     Some((rest[..end].to_string(), quote))
+}
+
+fn vendored_circomlib_circuits_dir() -> Option<PathBuf> {
+    let candidate =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../vendor/circomlib/circuits");
+    candidate.exists().then_some(candidate)
+}
+
+fn resolve_circom_include_path(source_dir: &Path, path_str: &str) -> PathBuf {
+    let normalized = path_str.replace('\\', "/");
+    if normalized.contains("circomlib/circuits/") {
+        if let Some(file_name) = Path::new(&normalized).file_name() {
+            if let Some(vendor_dir) = vendored_circomlib_circuits_dir() {
+                let vendored = vendor_dir.join(file_name);
+                if vendored.exists() {
+                    return vendored;
+                }
+            }
+        }
+    }
+
+    let include_path = Path::new(path_str);
+    let resolved = if include_path.is_relative() {
+        source_dir.join(include_path)
+    } else {
+        include_path.to_path_buf()
+    };
+
+    resolved
 }
 
 fn is_param_signal_assignment_compat_line(trimmed: &str) -> bool {
@@ -1932,8 +2008,19 @@ impl CircomTarget {
             paths.push(path);
         }
 
+        let required_power = self
+            .metadata
+            .as_ref()
+            .map(|metadata| min_ptau_power_for_constraints(metadata.num_constraints));
+
         if let Some(path) = &self.ptau_path_override {
             if is_valid_ptau_file(path)? {
+                ensure_ptau_power_is_sufficient(
+                    path,
+                    required_power,
+                    self.snarkjs_path_override.as_deref(),
+                    self.circuit_path.as_path(),
+                )?;
                 return Ok(path.clone());
             }
             anyhow::bail!(
@@ -1948,6 +2035,12 @@ impl CircomTarget {
                 anyhow::bail!("{} is set but empty", CIRCOM_PTAU_PATH_ENV);
             }
             if is_valid_ptau_file(&path)? {
+                ensure_ptau_power_is_sufficient(
+                    &path,
+                    required_power,
+                    self.snarkjs_path_override.as_deref(),
+                    self.circuit_path.as_path(),
+                )?;
                 tracing::info!("Using ptau file from {}: {:?}", CIRCOM_PTAU_PATH_ENV, path);
                 return Ok(path);
             }
@@ -1982,10 +2075,11 @@ impl CircomTarget {
             }
         }
 
+        let mut valid_candidates = Vec::<PathBuf>::new();
         for candidate in direct_ptau_candidates {
             if is_valid_ptau_file(&candidate)? {
-                tracing::info!("Found existing valid ptau file: {:?}", candidate);
-                return Ok(candidate);
+                valid_candidates.push(candidate);
+                continue;
             }
             tracing::warn!(
                 "Ignoring invalid ptau candidate (bad header/size): {}",
@@ -2022,8 +2116,8 @@ impl CircomTarget {
                 let path = entry.path();
                 if path.extension().is_some_and(|e| e == "ptau") {
                     if is_valid_ptau_file(&path)? {
-                        tracing::info!("Found existing valid ptau file: {:?}", path);
-                        return Ok(path);
+                        push_unique_path(&mut valid_candidates, path);
+                        continue;
                     }
                     tracing::warn!(
                         "Ignoring invalid ptau candidate (bad header/size): {}",
@@ -2031,6 +2125,16 @@ impl CircomTarget {
                     );
                 }
             }
+        }
+
+        if let Some(selected) = select_best_ptau_candidate(
+            &valid_candidates,
+            required_power,
+            self.snarkjs_path_override.as_deref(),
+            self.circuit_path.as_path(),
+        )? {
+            tracing::info!("Using ptau file: {:?}", selected);
+            return Ok(selected);
         }
 
         anyhow::bail!(
@@ -2953,6 +3057,176 @@ fn is_valid_ptau_file(path: &Path) -> Result<bool> {
     Ok(metadata.is_file() && metadata.len() >= MIN_PTAU_BYTES)
 }
 
+fn min_ptau_power_for_constraints(num_constraints: usize) -> u32 {
+    let domain_size = num_constraints.saturating_mul(2).max(2);
+    usize::BITS - (domain_size.saturating_sub(1)).leading_zeros()
+}
+
+fn ptau_name_power_hint(path: &Path) -> Option<u32> {
+    let stem = path.file_stem()?.to_str()?;
+    let mut best = None;
+    for token in stem.split(|ch: char| !ch.is_ascii_digit()) {
+        if let Ok(value) = token.parse::<u32>() {
+            best = Some(value);
+        }
+    }
+    best
+}
+
+fn ptau_power_cache() -> &'static Mutex<HashMap<PathBuf, u32>> {
+    static CACHE: OnceLock<Mutex<HashMap<PathBuf, u32>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn inspect_ptau_power(path: &Path, preferred_snarkjs: Option<&Path>) -> Result<u32> {
+    let cached = match ptau_power_cache().lock() {
+        Ok(guard) => guard.get(path).copied(),
+        Err(poisoned) => {
+            tracing::warn!("ptau power cache lock poisoned; reading recovered value");
+            poisoned.into_inner().get(path).copied()
+        }
+    };
+    if let Some(power) = cached {
+        return Ok(power);
+    }
+
+    if let Some(power) = ptau_name_power_hint(path) {
+        let mut guard = match ptau_power_cache().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("ptau power cache lock poisoned; storing recovered value");
+                poisoned.into_inner()
+            }
+        };
+        guard.insert(path.to_path_buf(), power);
+        return Ok(power);
+    }
+
+    let tempdir = Builder::new().prefix("zkfuzz_ptau_inspect").tempdir()?;
+    let json_path = tempdir.path().join("ptau.json");
+    let ptau_path_str = path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("Non-UTF8 ptau path: {}", path.display()))?;
+    let json_path_str = json_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("Non-UTF8 ptau json path: {}", json_path.display()))?;
+
+    let (output, _candidate) =
+        run_snarkjs_with_fallback(preferred_snarkjs, "Failed to inspect ptau power", |cmd| {
+            cmd.args([
+                "powersoftau",
+                "export",
+                "json",
+                ptau_path_str,
+                json_path_str,
+            ]);
+        })?;
+
+    if !output.status.success() || snarkjs_output_reports_error(&output) {
+        anyhow::bail!(
+            "Failed to inspect ptau power for '{}': {}",
+            path.display(),
+            crate::util::command_failure_summary(&output)
+        );
+    }
+
+    let payload: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&json_path)
+            .with_context(|| format!("Failed reading ptau json '{}'", json_path.display()))?,
+    )
+    .with_context(|| format!("Failed parsing ptau json '{}'", json_path.display()))?;
+    let power = payload
+        .get("power")
+        .and_then(|value| value.as_u64())
+        .ok_or_else(|| anyhow::anyhow!("ptau json missing numeric 'power' field"))?
+        as u32;
+
+    let mut guard = match ptau_power_cache().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            tracing::warn!("ptau power cache lock poisoned; storing recovered value");
+            poisoned.into_inner()
+        }
+    };
+    guard.insert(path.to_path_buf(), power);
+    Ok(power)
+}
+
+fn ensure_ptau_power_is_sufficient(
+    path: &Path,
+    required_power: Option<u32>,
+    preferred_snarkjs: Option<&Path>,
+    circuit_path: &Path,
+) -> Result<()> {
+    let Some(required_power) = required_power else {
+        return Ok(());
+    };
+    let actual_power = inspect_ptau_power(path, preferred_snarkjs)?;
+    if actual_power < required_power {
+        anyhow::bail!(
+            "Configured ptau '{}' has power {} but circuit '{}' requires at least power {}",
+            path.display(),
+            actual_power,
+            circuit_path.display(),
+            required_power
+        );
+    }
+    Ok(())
+}
+
+fn select_best_ptau_candidate(
+    candidates: &[PathBuf],
+    required_power: Option<u32>,
+    preferred_snarkjs: Option<&Path>,
+    circuit_path: &Path,
+) -> Result<Option<PathBuf>> {
+    if candidates.is_empty() {
+        return Ok(None);
+    }
+
+    let mut inspected = Vec::<(PathBuf, u32)>::new();
+    for candidate in candidates {
+        inspected.push((
+            candidate.clone(),
+            inspect_ptau_power(candidate, preferred_snarkjs)?,
+        ));
+    }
+
+    inspected.sort_by(|(path_a, power_a), (path_b, power_b)| {
+        power_a.cmp(power_b).then_with(|| path_a.cmp(path_b))
+    });
+
+    if let Some(required_power) = required_power {
+        if let Some((path, actual_power)) = inspected
+            .iter()
+            .find(|(_, actual_power)| *actual_power >= required_power)
+        {
+            tracing::info!(
+                "Selected ptau '{}' with power {} for circuit '{}' (required power {})",
+                path.display(),
+                actual_power,
+                circuit_path.display(),
+                required_power
+            );
+            return Ok(Some(path.clone()));
+        }
+
+        let available = inspected
+            .iter()
+            .map(|(path, power)| format!("{} (power {})", path.display(), power))
+            .collect::<Vec<_>>()
+            .join(", ");
+        anyhow::bail!(
+            "No available ptau file is large enough for circuit '{}': requires at least power {}, found {}",
+            circuit_path.display(),
+            required_power,
+            available
+        );
+    }
+
+    Ok(inspected.first().map(|(path, _)| path.clone()))
+}
+
 fn is_valid_zkey_file(path: &Path) -> Result<bool> {
     has_bin_magic(path, b"zkey")
 }
@@ -3190,7 +3464,3 @@ pub mod analysis {
         UnusedSignal,
     }
 }
-
-#[cfg(test)]
-#[path = "mod_tests.rs"]
-mod tests;

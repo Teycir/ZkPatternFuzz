@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 from dataclasses import asdict, dataclass
@@ -121,16 +122,25 @@ def command_exists(name: str) -> bool:
 
 
 def discover_local_ptau(repo_root: Path) -> Path | None:
-    preferred = repo_root / "bins" / "ptau" / "pot12_final.ptau"
-    if preferred.is_file():
-        return preferred
     ptau_dir = repo_root / "bins" / "ptau"
     if not ptau_dir.is_dir():
         return None
+    best: tuple[int, Path] | None = None
     for candidate in sorted(ptau_dir.iterdir()):
-        if candidate.is_file() and candidate.suffix == ".ptau":
-            return candidate
-    return None
+        if not (candidate.is_file() and candidate.suffix == ".ptau"):
+            continue
+        score = ptau_name_power_hint(candidate)
+        if best is None or score > best[0] or (score == best[0] and candidate > best[1]):
+            best = (score, candidate)
+    return best[1] if best else None
+
+
+def ptau_name_power_hint(path: Path) -> int:
+    best = 0
+    for token in re.split(r"\D+", path.stem):
+        if token.isdigit():
+            best = int(token)
+    return best
 
 
 def parse_noir_manifest(manifest_path: Path) -> tuple[str | None, list[str]]:
