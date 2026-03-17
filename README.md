@@ -202,9 +202,33 @@ The target bindings for those wrappers are the three `config.env` keys below:
 - `ZKF_STD_TARGET_STANDARD`
 - `ZKF_STD_TARGET_DEEP`
 
-Each binding can be either a named matrix entry or a direct target path such as `/home/teycir/ZkRepos/semaphore/packages/circuits/src/semaphore.circom`. When you bind a direct path and auto-detection is ambiguous, set the companion `ZKF_STD_TARGET_*_FRAMEWORK` and `ZKF_STD_TARGET_*_MAIN_COMPONENT` values in `config.env`.
+Each binding can be either a named matrix entry or a direct target path such as `/home/teycir/ZkRepos/tornado-core/circuits/withdraw.circom`. When you bind a direct path and auto-detection is ambiguous, set the companion `ZKF_STD_TARGET_*_FRAMEWORK` and `ZKF_STD_TARGET_*_MAIN_COMPONENT` values in `config.env`.
+
+To discover current runnable targets from a live checkout such as `/home/teycir/ZkRepos`, use:
+
+```bash
+python3 scripts/discover_zkrepos_targets.py --root /home/teycir/ZkRepos
+python3 scripts/discover_zkrepos_targets.py --root /home/teycir/ZkRepos --match withdraw --format env --profile smoke
+```
+
+To start from a clean shortlist instead of the full raw inventory, use the curated intake pass:
+
+```bash
+python3 scripts/curate_zkrepos_targets.py --root /home/teycir/ZkRepos
+python3 scripts/curate_zkrepos_targets.py --root /home/teycir/ZkRepos --verify --format json
+```
+
+The curated pass filters out framework source trees, workspace aggregates, tests/docs/fixtures, and non-runnable targets, then reports per-target prerequisites and dependency blockers. On the current live tree, the ready first-pass targets are `tornado-core/circuits/withdraw.circom` plus a set of `noir-examples` binary manifests; `zkevm-circuits` remains in the shortlist but is reported as blocked until its Rust git dependencies are locally available.
 
 The operational contract for these profiles is documented in [docs/STANDARDIZED_RUN_PROFILES.md](docs/STANDARDIZED_RUN_PROFILES.md).
+
+For a full-coverage single-target campaign against the broad prod catalog, use:
+
+```bash
+scripts/run_full_coverage_target.sh
+```
+
+That runner defaults to `/home/teycir/ZkRepos/tornado-core/circuits/withdraw.circom`, uses `--config-profile prod --alias always`, and defaults to `50000` iterations unless you override `ITERATIONS=...`.
 
 ## Circuit Generation
 
