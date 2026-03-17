@@ -12,6 +12,48 @@ resolve_repo_path() {
   fi
 }
 
+looks_like_target_path() {
+  local raw_value="$1"
+  case "$raw_value" in
+    */*|*.circom|*.cairo|*/Cargo.toml|Cargo.toml|*/Nargo.toml|Nargo.toml|*/Scarb.toml|Scarb.toml)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+detect_framework_from_target() {
+  local target_path="$1"
+  local base_name
+  base_name="$(basename "$target_path")"
+  case "$base_name" in
+    *.circom)
+      printf '%s\n' "circom"
+      return 0
+      ;;
+    Nargo.toml)
+      printf '%s\n' "noir"
+      return 0
+      ;;
+    Scarb.toml|*.cairo)
+      printf '%s\n' "cairo"
+      return 0
+      ;;
+    Cargo.toml)
+      if grep -Eiq 'halo2' "$target_path"; then
+        printf '%s\n' "halo2"
+        return 0
+      fi
+      return 1
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 MATRIX_PATH="$ROOT_DIR/targets/zk0d_matrix_external_manual.yaml"
 REGISTRY_PATH="$ROOT_DIR/targets/fuzzer_registry.prod.yaml"
 ZKEVM_TEMPLATE_CSV="cveX15_scroll_missing_overflow_constraint.yaml,cveX16_scroll_missing_constraint.yaml,cveX35_halo2_signature_readiness_probe.yaml,cveX36_halo2_constraint_metadata_readiness_probe.yaml,cveX37_halo2_plonk_lookup_readiness_probe.yaml,cveX38_halo2_profile_k_readiness_probe.yaml,cveX39_scroll_modgadget_underconstrained_mulmod.yaml,cveX40_scroll_create_static_context_escape.yaml,cveX41_scroll_rlpu64_lt128_underconstrained.yaml"
@@ -26,10 +68,10 @@ MONITOR_INTERVAL_SECS=5
 : "${STAGE_DETECTION_TIMEOUT_SECS:?STAGE_DETECTION_TIMEOUT_SECS must be set by the standardized profile wrapper}"
 : "${STAGE_PROOF_TIMEOUT_SECS:?STAGE_PROOF_TIMEOUT_SECS must be set by the standardized profile wrapper}"
 : "${STUCK_STEP_WARN_SECS:?STUCK_STEP_WARN_SECS must be set by the standardized profile wrapper}"
-: "${ZKF_SCAN_OUTPUT_ROOT:?ZKF_SCAN_OUTPUT_ROOT must be set in .env}"
-: "${ZKF_RUN_SIGNAL_DIR:?ZKF_RUN_SIGNAL_DIR must be set in .env}"
-: "${ZKF_BUILD_CACHE_DIR:?ZKF_BUILD_CACHE_DIR must be set in .env}"
-: "${ZKF_SHARED_BUILD_CACHE_DIR:?ZKF_SHARED_BUILD_CACHE_DIR must be set in .env}"
+: "${ZKF_SCAN_OUTPUT_ROOT:?ZKF_SCAN_OUTPUT_ROOT must be set in config.env}"
+: "${ZKF_RUN_SIGNAL_DIR:?ZKF_RUN_SIGNAL_DIR must be set in config.env}"
+: "${ZKF_BUILD_CACHE_DIR:?ZKF_BUILD_CACHE_DIR must be set in config.env}"
+: "${ZKF_SHARED_BUILD_CACHE_DIR:?ZKF_SHARED_BUILD_CACHE_DIR must be set in config.env}"
 
 if [[ ! -f "$MATRIX_PATH" ]]; then
   echo "Matrix not found: $MATRIX_PATH" >&2
@@ -40,49 +82,73 @@ if [[ ! -f "$REGISTRY_PATH" ]]; then
   exit 1
 fi
 
-TARGET_ROW="$(
-  awk -v wanted="$TARGET_NAME" '
-    function flush() {
-      if (!in_target) return;
-      if (name == wanted) {
-        printf("%s\t%s\t%s\t%s\t%s\t%s\n", name, target_circuit, main_component, framework, alias, enabled);
-        found = 1;
-        exit;
+TARGET_PATH_CANDIDATE="$(resolve_repo_path "$TARGET_NAME")"
+TARGET_ROW=""
+
+if [[ -f "$TARGET_PATH_CANDIDATE" ]]; then
+  RESOLVED_NAME="$(basename "$TARGET_PATH_CANDIDATE")"
+  TARGET_CIRCUIT="$TARGET_PATH_CANDIDATE"
+  MAIN_COMPONENT="${TARGET_MAIN_COMPONENT:-main}"
+  FRAMEWORK="${TARGET_FRAMEWORK:-}"
+  ALIAS="always"
+  ENABLED="true"
+
+  if [[ -z "$FRAMEWORK" ]]; then
+    FRAMEWORK="$(detect_framework_from_target "$TARGET_CIRCUIT" || true)"
+  fi
+  if [[ -z "$FRAMEWORK" ]]; then
+    echo "Unable to auto-detect framework for direct target path: $TARGET_CIRCUIT" >&2
+    echo "Set TARGET_FRAMEWORK or ZKF_STD_TARGET_*_FRAMEWORK in config.env." >&2
+    exit 1
+  fi
+elif looks_like_target_path "$TARGET_NAME"; then
+  echo "Configured direct target path does not exist: $TARGET_PATH_CANDIDATE" >&2
+  exit 1
+else
+  TARGET_ROW="$(
+    awk -v wanted="$TARGET_NAME" '
+      function flush() {
+        if (!in_target) return;
+        if (name == wanted) {
+          printf("%s\t%s\t%s\t%s\t%s\t%s\n", name, target_circuit, main_component, framework, alias, enabled);
+          found = 1;
+          exit;
+        }
       }
-    }
 
-    /^  - name: / {
-      flush();
-      in_target = 1;
-      name = $3;
-      target_circuit = "";
-      main_component = "main";
-      framework = "circom";
-      alias = "always";
-      enabled = "true";
-      next;
-    }
+      /^  - name: / {
+        flush();
+        in_target = 1;
+        name = $3;
+        target_circuit = "";
+        main_component = "main";
+        framework = "circom";
+        alias = "always";
+        enabled = "true";
+        next;
+      }
 
-    in_target && /^    target_circuit: / { sub(/^    target_circuit: /, "", $0); target_circuit = $0; next; }
-    in_target && /^    main_component: / { sub(/^    main_component: /, "", $0); main_component = $0; next; }
-    in_target && /^    framework: / { sub(/^    framework: /, "", $0); framework = $0; next; }
-    in_target && /^    alias: / { sub(/^    alias: /, "", $0); alias = $0; next; }
-    in_target && /^    enabled: / { sub(/^    enabled: /, "", $0); enabled = $0; next; }
+      in_target && /^    target_circuit: / { sub(/^    target_circuit: /, "", $0); target_circuit = $0; next; }
+      in_target && /^    main_component: / { sub(/^    main_component: /, "", $0); main_component = $0; next; }
+      in_target && /^    framework: / { sub(/^    framework: /, "", $0); framework = $0; next; }
+      in_target && /^    alias: / { sub(/^    alias: /, "", $0); alias = $0; next; }
+      in_target && /^    enabled: / { sub(/^    enabled: /, "", $0); enabled = $0; next; }
 
-    END { flush(); }
-  ' "$MATRIX_PATH"
-)"
+      END { flush(); }
+    ' "$MATRIX_PATH"
+  )"
 
-if [[ -z "$TARGET_ROW" ]]; then
-  echo "Target '$TARGET_NAME' not found in matrix: $MATRIX_PATH" >&2
-  exit 1
-fi
+  if [[ -z "$TARGET_ROW" ]]; then
+    echo "Target '$TARGET_NAME' not found in matrix: $MATRIX_PATH" >&2
+    exit 1
+  fi
 
-IFS=$'\t' read -r RESOLVED_NAME TARGET_CIRCUIT MAIN_COMPONENT FRAMEWORK ALIAS ENABLED <<< "$TARGET_ROW"
+  IFS=$'\t' read -r RESOLVED_NAME TARGET_CIRCUIT MAIN_COMPONENT FRAMEWORK ALIAS ENABLED <<< "$TARGET_ROW"
 
-if [[ "$ENABLED" != "true" ]]; then
-  echo "Target '$TARGET_NAME' is disabled in matrix (enabled=$ENABLED)." >&2
-  exit 1
+  if [[ "$ENABLED" != "true" ]]; then
+    echo "Target '$TARGET_NAME' is disabled in matrix (enabled=$ENABLED)." >&2
+    exit 1
+  fi
 fi
 
 EFFECTIVE_DETECTION_TIMEOUT_SECS="$STAGE_DETECTION_TIMEOUT_SECS"

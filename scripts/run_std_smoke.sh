@@ -2,20 +2,26 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONFIG_ENV_PATH="$ROOT_DIR/config.env"
 
-if [[ -f "$ROOT_DIR/.env" ]]; then
-  # shellcheck disable=SC1091
-  set -a
-  source "$ROOT_DIR/.env"
-  set +a
+if [[ ! -f "$CONFIG_ENV_PATH" ]]; then
+  echo "Missing runtime config: $CONFIG_ENV_PATH" >&2
+  exit 1
 fi
 
+# shellcheck disable=SC1091
+set -a
+source "$CONFIG_ENV_PATH"
+set +a
+
 if [[ -z "${ZKF_STD_TARGET_SMOKE:-}" ]]; then
-  echo "Missing target binding: ZKF_STD_TARGET_SMOKE (.env)." >&2
+  echo "Missing target binding: ZKF_STD_TARGET_SMOKE (config.env)." >&2
   exit 1
 fi
 
 export TARGET_NAME="$ZKF_STD_TARGET_SMOKE"
+export TARGET_FRAMEWORK="${ZKF_STD_TARGET_SMOKE_FRAMEWORK:-}"
+export TARGET_MAIN_COMPONENT="${ZKF_STD_TARGET_SMOKE_MAIN_COMPONENT:-main}"
 export JOBS=1
 export WORKERS=2
 export ITERATIONS=800

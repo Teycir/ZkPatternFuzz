@@ -122,7 +122,7 @@ Use [docs/TOOLS_AVAILABLE_ON_HOST.md](docs/TOOLS_AVAILABLE_ON_HOST.md) for the v
 ```bash
 git clone https://github.com/Teycir/ZkPatternFuzz.git
 cd ZkPatternFuzz
-cp .env.example .env
+cp config.env.example config.env
 npm ci
 cargo build --release --bins
 cargo test
@@ -140,16 +140,16 @@ cargo doc --workspace --no-deps
 
 ## Runtime Environment
 
-The tracked `.env.example` is the supported baseline for both wrapper scripts and direct batch runs:
+The tracked `config.env.example` is the supported baseline for both wrapper scripts and direct batch runs:
 
 ```bash
-cp .env.example .env
+cp config.env.example config.env
 set -a
-source .env
+source config.env
 set +a
 ```
 
-That loads the writable output roots, build cache paths, and the required `zkpatternfuzz` batch timeout settings. Override values in `.env` only when you need a different local output root or a different standardized target binding.
+That loads the writable output roots, build cache paths, and the required `zkpatternfuzz` batch timeout settings. Override values in `config.env` only when you need a different local output root or a different standardized target binding.
 
 ## Quick Start
 
@@ -196,11 +196,13 @@ scripts/run_std_deep.sh
 scripts/monitor_std_run.sh
 ```
 
-The target bindings for those wrappers are the three `.env` keys below:
+The target bindings for those wrappers are the three `config.env` keys below:
 
 - `ZKF_STD_TARGET_SMOKE`
 - `ZKF_STD_TARGET_STANDARD`
 - `ZKF_STD_TARGET_DEEP`
+
+Each binding can be either a named matrix entry or a direct target path such as `/home/teycir/ZkRepos/semaphore/packages/circuits/src/semaphore.circom`. When you bind a direct path and auto-detection is ambiguous, set the companion `ZKF_STD_TARGET_*_FRAMEWORK` and `ZKF_STD_TARGET_*_MAIN_COMPONENT` values in `config.env`.
 
 The operational contract for these profiles is documented in [docs/STANDARDIZED_RUN_PROFILES.md](docs/STANDARDIZED_RUN_PROFILES.md).
 
@@ -232,7 +234,7 @@ Use [docs/PLUGIN_API.md](docs/PLUGIN_API.md) for the minimal contract and [docs/
 
 ## Direct Batch Runs
 
-After sourcing `.env`, you can inspect the catalog:
+After sourcing `config.env`, you can inspect the catalog:
 
 ```bash
 target/release/zkpatternfuzz \

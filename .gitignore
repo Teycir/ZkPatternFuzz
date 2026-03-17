@@ -10,11 +10,16 @@
 *.swo
 *~
 
-# Local environment
+# Local runtime config
+config.env
+config.env.local
+config.*.env
+!config.env.example
+
+# Legacy local env files kept ignored after the config rename
 .env
 .env.local
 .env.*
-!.env.example
 
 # OS
 .DS_Store

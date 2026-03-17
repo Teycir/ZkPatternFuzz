@@ -12,18 +12,18 @@ resolve_repo_path() {
   fi
 }
 
-if [[ -f "$ROOT_DIR/.env" ]]; then
+if [[ -f "$ROOT_DIR/config.env" ]]; then
   # shellcheck disable=SC1091
   set -a
-  source "$ROOT_DIR/.env"
+  source "$ROOT_DIR/config.env"
   set +a
 fi
 
 INTERVAL_SECS=5
 TAIL_LINES=25
 
-: "${ZKF_SCAN_OUTPUT_ROOT:?ZKF_SCAN_OUTPUT_ROOT must be set in .env}"
-: "${ZKF_RUN_SIGNAL_DIR:?ZKF_RUN_SIGNAL_DIR must be set in .env}"
+: "${ZKF_SCAN_OUTPUT_ROOT:?ZKF_SCAN_OUTPUT_ROOT must be set in config.env}"
+: "${ZKF_RUN_SIGNAL_DIR:?ZKF_RUN_SIGNAL_DIR must be set in config.env}"
 
 RUN_ROOT="$(resolve_repo_path "$ZKF_SCAN_OUTPUT_ROOT")"
 RUN_SIGNAL_DIR="$(resolve_repo_path "$ZKF_RUN_SIGNAL_DIR")"

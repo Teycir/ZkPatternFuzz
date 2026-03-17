@@ -4,10 +4,10 @@ This repository defines 3 fixed run profiles to prevent command drift.
 
 ## Source Of Truth
 
-Target bindings are defined in `.env`. Start from the tracked template:
+Target bindings are defined in `config.env`. Start from the tracked template:
 
 ```bash
-cp .env.example .env
+cp config.env.example config.env
 ```
 
 The default template uses repo-relative output paths, and the wrapper scripts resolve them against the repository root.
@@ -19,6 +19,13 @@ Routine target bindings are:
 - `ZKF_STD_TARGET_DEEP`
 
 Set these once, then use the wrapper scripts below.
+
+Each binding may be either:
+
+- a named entry from the checked-in target matrix, or
+- a direct target path such as `/home/teycir/ZkRepos/semaphore/packages/circuits/src/semaphore.circom`
+
+When you use a direct path and the framework is not obvious, set the matching `ZKF_STD_TARGET_*_FRAMEWORK` and `ZKF_STD_TARGET_*_MAIN_COMPONENT` values in `config.env`.
 
 ## Wrapper Scripts
 
@@ -66,6 +73,6 @@ scripts/monitor_std_run.sh
 - For routine runs, do not handcraft long `zkpatternfuzz` commands.
 - Use one of the 3 wrappers.
 - Do not pass flags/overrides to wrappers.
-- Change only the 3 target bindings in `.env`.
+- Change only the standardized target bindings in `config.env`.
 - Do not override selector profile manually; it is framework-bound by the fixed runner.
-- Do not commit `.env`; keep local operator settings in your untracked copy.
+- Do not commit `config.env`; keep local operator settings in your untracked copy.

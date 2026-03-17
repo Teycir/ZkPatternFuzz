@@ -16,19 +16,22 @@ fn parse_env_line(line: &str, line_no: usize) -> anyhow::Result<Option<(String, 
     };
 
     let Some((raw_key, raw_value)) = candidate.split_once('=') else {
-        bail!("Invalid .env entry at line {}: expected KEY=VALUE", line_no);
+        bail!(
+            "Invalid env config entry at line {}: expected KEY=VALUE",
+            line_no
+        );
     };
 
     let key = raw_key.trim();
     if key.is_empty() {
-        bail!("Invalid .env entry at line {}: empty key", line_no);
+        bail!("Invalid env config entry at line {}: empty key", line_no);
     }
     if !key
         .chars()
         .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
     {
         bail!(
-            "Invalid .env key '{}' at line {}: use only [A-Za-z0-9_]",
+            "Invalid env config key '{}' at line {}: use only [A-Za-z0-9_]",
             key,
             line_no
         );

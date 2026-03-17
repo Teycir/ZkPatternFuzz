@@ -97,7 +97,7 @@ use zkpatternfuzz_types::*;
 
 fn main() -> anyhow::Result<()> {
     let _check_env = CheckEnv::new(
-        Path::new(".env"),
+        Path::new("config.env"),
         &[
             SCAN_OUTPUT_ROOT_ENV,
             RUN_SIGNAL_DIR_ENV,

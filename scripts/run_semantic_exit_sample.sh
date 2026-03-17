@@ -3,10 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-if [[ -f "$ROOT_DIR/.env" ]]; then
+if [[ -f "$ROOT_DIR/config.env" ]]; then
   # shellcheck disable=SC1091
   set -a
-  source "$ROOT_DIR/.env"
+  source "$ROOT_DIR/config.env"
   set +a
 fi
 

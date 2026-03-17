@@ -5,7 +5,7 @@ Production troubleshooting guide for common ZkPatternFuzz failures.
 Start local operator setup from the tracked template:
 
 ```bash
-cp .env.example .env
+cp config.env.example config.env
 npm ci
 ```
 
@@ -38,14 +38,14 @@ If a run fails, inspect `run_outcome.json` first.
 ### Typical Signals
 
 - `ZKF_RUN_SIGNAL_DIR is required and must point to a writable path`
-- `Missing required env keys in '.env'`
+- `Missing required env keys in 'config.env'`
 - `Unable to create result directory`
 - `Permission denied (os error 13)` under the configured output root
 
 ### Actions
 
 1. Override output paths to a writable directory under the repo or `/tmp`.
-2. If you rely on `.env`, keep those keys in your local `.env` by copying from `.env.example`.
+2. If you rely on `config.env`, keep those keys in your local `config.env` by copying from `config.env.example`.
 3. For direct `zkpatternfuzz` runs, export the three `ZKF_ZKPATTERNFUZZ_*` stage-timeout vars when overriding the template values ad hoc.
 4. Create the directories before rerunning.
 

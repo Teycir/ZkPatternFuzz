@@ -33,9 +33,9 @@ function loadEnvMaster() {
     candidates.push(process.env.ZKF_ENV_MASTER_FILE);
   }
   candidates.push(
-    path.join(repoRoot, ".env.master"),
-    path.join(repoRoot, ".env.paths"),
-    path.join(repoRoot, ".env"),
+    path.join(repoRoot, "config.master.env"),
+    path.join(repoRoot, "config.paths.env"),
+    path.join(repoRoot, "config.env"),
   );
 
   for (const candidate of candidates) {
