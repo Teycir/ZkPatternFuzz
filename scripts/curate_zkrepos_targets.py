@@ -43,7 +43,13 @@ SKIP_SEGMENTS = {
 }
 EXAMPLE_SEGMENTS = {"example", "examples"}
 MONOREPO_NOISE_REPOS = {"aztec-packages"}
-PREFERRED_REPOS = {"circom-ecdsa", "tornado-core", "noir-examples", "zkevm-circuits"}
+PREFERRED_REPOS = {
+    "circom-ecdsa",
+    "tornado-core",
+    "noir-examples",
+    "zkevm-circuits",
+    "circom_rps",
+}
 
 
 @dataclass(frozen=True)
@@ -447,7 +453,11 @@ def verify_target(
     if target.framework == "cairo":
         manifest = Path(target.target_path)
         project_dir = manifest.parent
-        ok, message = run_checked_command(["scarb", "metadata"], timeout, project_dir)
+        ok, message = run_checked_command(
+            ["scarb", "metadata", "--format-version", "1"],
+            timeout,
+            project_dir,
+        )
         return ("ready" if ok else "blocked", message)
 
     return ("not_run", None)
