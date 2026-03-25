@@ -953,13 +953,11 @@ fn resolve_circom_include_path(source_dir: &Path, path_str: &str) -> PathBuf {
     }
 
     let include_path = Path::new(path_str);
-    let resolved = if include_path.is_relative() {
+    if include_path.is_relative() {
         source_dir.join(include_path)
     } else {
         include_path.to_path_buf()
-    };
-
-    resolved
+    }
 }
 
 fn is_param_signal_assignment_compat_line(trimmed: &str) -> bool {
