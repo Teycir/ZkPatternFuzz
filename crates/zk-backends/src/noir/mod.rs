@@ -1238,7 +1238,7 @@ impl NoirTarget {
             }
 
             let mut idx = 0usize;
-            for param in public_params.into_iter().chain(private_params.into_iter()) {
+            for param in public_params.into_iter().chain(private_params) {
                 if idx < inputs.len() {
                     let value = field_element_to_noir_value(&inputs[idx]);
                     toml.push_str(&format!("{} = {}\n", param.name, value));
