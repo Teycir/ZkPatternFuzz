@@ -275,7 +275,7 @@ pub fn build_shared_data_flow(summary: &PostRoadmapRunSummary) -> SharedDataFlow
     }
 
     semantic_candidate_findings.sort_by(|left, right| left.finding_id.cmp(&right.finding_id));
-    next_cycle_generator_priorities.sort_by(|left, right| right.priority.cmp(&left.priority));
+    next_cycle_generator_priorities.sort_by_key(|r| std::cmp::Reverse(r.priority));
 
     let mut compiler_generated_circuits: Vec<String> =
         compiler_generated_circuits.into_iter().collect();

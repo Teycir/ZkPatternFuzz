@@ -187,10 +187,10 @@ impl ConfigGenerator {
                 PatternType::HashFunction(name) => {
                     traits.hash_function = Some(name.clone());
                 }
-                PatternType::RangeCheck => {
-                    if !traits.range_checks.contains(&"detected".to_string()) {
-                        traits.range_checks.push("detected".to_string());
-                    }
+                PatternType::RangeCheck
+                    if !traits.range_checks.contains(&"detected".to_string()) =>
+                {
+                    traits.range_checks.push("detected".to_string());
                 }
                 _ => {}
             }
@@ -316,10 +316,10 @@ impl ConfigGenerator {
                         deep_attacks.push("quantum_resistance".to_string());
                     }
                 }
-                PatternType::TrustedSetupArtifact => {
-                    if !deep_attacks.contains(&"trusted_setup".to_string()) {
-                        deep_attacks.push("trusted_setup".to_string());
-                    }
+                PatternType::TrustedSetupArtifact
+                    if !deep_attacks.contains(&"trusted_setup".to_string()) =>
+                {
+                    deep_attacks.push("trusted_setup".to_string());
                 }
                 _ => {}
             }
@@ -537,19 +537,17 @@ impl ConfigGenerator {
                         });
                     }
                 }
-                PatternType::TrustedSetupArtifact => {
+                PatternType::TrustedSetupArtifact
                     if !attacks
                         .iter()
-                        .any(|a| a.attack_type == AttackType::TrustedSetup)
-                    {
-                        attacks.push(Attack {
-                            attack_type: AttackType::TrustedSetup,
-                            description: "Auto-detected: Trusted setup poisoning checks"
-                                .to_string(),
-                            plugin: None,
-                            config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
-                        });
-                    }
+                        .any(|a| a.attack_type == AttackType::TrustedSetup) =>
+                {
+                    attacks.push(Attack {
+                        attack_type: AttackType::TrustedSetup,
+                        description: "Auto-detected: Trusted setup poisoning checks".to_string(),
+                        plugin: None,
+                        config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
+                    });
                 }
                 _ => {}
             }

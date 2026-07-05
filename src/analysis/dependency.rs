@@ -235,7 +235,7 @@ impl DependencyGraph {
             .collect();
 
         // Sort by degree descending (highest connectivity first)
-        uncovered_with_degree.sort_by(|a, b| b.1.cmp(&a.1));
+        uncovered_with_degree.sort_by_key(|b| std::cmp::Reverse(b.1));
 
         uncovered_with_degree
             .into_iter()
