@@ -1576,7 +1576,7 @@ fn write_semantic_actionable_report(
             }
         })
         .collect::<Vec<_>>();
-    actionable_findings.sort_by(|left, right| right.priority.cmp(&left.priority));
+    actionable_findings.sort_by_key(|r| std::cmp::Reverse(r.priority));
 
     let actionable_report = SemanticActionableReport {
         schema_version: POST_ROADMAP_SCHEMA_VERSION.to_string(),
