@@ -934,27 +934,26 @@ impl ZkEvmAttack {
                     }
                 }
             }
-            MemoryExpansionTest::SequentialExpansion(count) if result.success => {
+            MemoryExpansionTest::SequentialExpansion(count)
+                if result.success && result.outputs.len() >= 2 =>
+            {
                 // Sequential expansions should accumulate gas correctly
                 // Verify gas accumulation (simplified)
-                if result.outputs.len() >= 2 {
-                    if let Some(gas_used) = result.outputs[1].to_u64() {
-                        let min_expected_gas = 3 * *count as u64; // Minimum for multiple MSTOREs
-                        if gas_used < min_expected_gas {
-                            return Ok(Some(ZkEvmTestResult {
-                                vulnerability_type: ZkEvmVulnerabilityType::GasAccountingError,
-                                description: "Sequential memory expansion gas undercharged"
-                                    .to_string(),
-                                opcode: Some("MSTORE".to_string()),
-                                witness: inputs,
-                                expected_behavior: format!(
-                                    "Gas >= {} for {} expansions",
-                                    min_expected_gas, count
-                                ),
-                                actual_behavior: format!("Gas used: {}", gas_used),
-                                context: HashMap::new(),
-                            }));
-                        }
+                if let Some(gas_used) = result.outputs[1].to_u64() {
+                    let min_expected_gas = 3 * *count as u64; // Minimum for multiple MSTOREs
+                    if gas_used < min_expected_gas {
+                        return Ok(Some(ZkEvmTestResult {
+                            vulnerability_type: ZkEvmVulnerabilityType::GasAccountingError,
+                            description: "Sequential memory expansion gas undercharged".to_string(),
+                            opcode: Some("MSTORE".to_string()),
+                            witness: inputs,
+                            expected_behavior: format!(
+                                "Gas >= {} for {} expansions",
+                                min_expected_gas, count
+                            ),
+                            actual_behavior: format!("Gas used: {}", gas_used),
+                            context: HashMap::new(),
+                        }));
                     }
                 }
             }
