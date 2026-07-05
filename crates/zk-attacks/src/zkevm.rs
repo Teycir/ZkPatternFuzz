@@ -682,26 +682,22 @@ impl ZkEvmAttack {
                     }
                 }
             }
-            StateTransitionTest::ZeroValueTransfer => {
+            StateTransitionTest::ZeroValueTransfer if !result.success => {
                 // Zero-value transfers should succeed
-                if !result.success {
-                    let err = match result.error {
-                        Some(value) => value,
-                        None => {
-                            "Execution failed without backend error message (zero-value transfer)"
-                                .to_string()
-                        }
-                    };
-                    return Ok(Some(ZkEvmTestResult {
-                        vulnerability_type: ZkEvmVulnerabilityType::StateTransitionMismatch,
-                        description: "Zero-value transfer fails unexpectedly".to_string(),
-                        opcode: None,
-                        witness: inputs.clone(),
-                        expected_behavior: "Successful zero-value transfer".to_string(),
-                        actual_behavior: format!("Error: {}", err),
-                        context: HashMap::new(),
-                    }));
-                }
+                let err = match result.error {
+                    Some(value) => value,
+                    None => "Execution failed without backend error message (zero-value transfer)"
+                        .to_string(),
+                };
+                return Ok(Some(ZkEvmTestResult {
+                    vulnerability_type: ZkEvmVulnerabilityType::StateTransitionMismatch,
+                    description: "Zero-value transfer fails unexpectedly".to_string(),
+                    opcode: None,
+                    witness: inputs.clone(),
+                    expected_behavior: "Successful zero-value transfer".to_string(),
+                    actual_behavior: format!("Error: {}", err),
+                    context: HashMap::new(),
+                }));
             }
             _ => {}
         }
@@ -843,26 +839,25 @@ impl ZkEvmAttack {
                     }
                 }
             }
-            OpcodeBoundaryCase::SignedEdge(_) => {
+            OpcodeBoundaryCase::SignedEdge(_)
                 // Check signed arithmetic edge cases
                 if (opcode.name == "SDIV" || opcode.name == "SMOD" || opcode.name == "SAR")
-                    && !result.success
-                {
-                    let err = match result.error {
-                        Some(value) => value,
-                        None => "Execution failed without backend error message (signed edge case)"
-                            .to_string(),
-                    };
-                    return Ok(Some(ZkEvmTestResult {
-                        vulnerability_type: ZkEvmVulnerabilityType::OpcodeBoundaryViolation,
-                        description: format!("{} fails on signed edge case", opcode.name),
-                        opcode: Some(opcode.name.to_string()),
-                        witness: full_inputs,
-                        expected_behavior: "Handle signed boundary values correctly".to_string(),
-                        actual_behavior: format!("Error: {}", err),
-                        context: HashMap::new(),
-                    }));
-                }
+                    && !result.success =>
+            {
+                let err = match result.error {
+                    Some(value) => value,
+                    None => "Execution failed without backend error message (signed edge case)"
+                        .to_string(),
+                };
+                return Ok(Some(ZkEvmTestResult {
+                    vulnerability_type: ZkEvmVulnerabilityType::OpcodeBoundaryViolation,
+                    description: format!("{} fails on signed edge case", opcode.name),
+                    opcode: Some(opcode.name.to_string()),
+                    witness: full_inputs,
+                    expected_behavior: "Handle signed boundary values correctly".to_string(),
+                    actual_behavior: format!("Error: {}", err),
+                    context: HashMap::new(),
+                }));
             }
             _ => {}
         }
@@ -939,28 +934,26 @@ impl ZkEvmAttack {
                     }
                 }
             }
-            MemoryExpansionTest::SequentialExpansion(count) => {
+            MemoryExpansionTest::SequentialExpansion(count) if result.success => {
                 // Sequential expansions should accumulate gas correctly
-                if result.success {
-                    // Verify gas accumulation (simplified)
-                    if result.outputs.len() >= 2 {
-                        if let Some(gas_used) = result.outputs[1].to_u64() {
-                            let min_expected_gas = 3 * *count as u64; // Minimum for multiple MSTOREs
-                            if gas_used < min_expected_gas {
-                                return Ok(Some(ZkEvmTestResult {
-                                    vulnerability_type: ZkEvmVulnerabilityType::GasAccountingError,
-                                    description: "Sequential memory expansion gas undercharged"
-                                        .to_string(),
-                                    opcode: Some("MSTORE".to_string()),
-                                    witness: inputs,
-                                    expected_behavior: format!(
-                                        "Gas >= {} for {} expansions",
-                                        min_expected_gas, count
-                                    ),
-                                    actual_behavior: format!("Gas used: {}", gas_used),
-                                    context: HashMap::new(),
-                                }));
-                            }
+                // Verify gas accumulation (simplified)
+                if result.outputs.len() >= 2 {
+                    if let Some(gas_used) = result.outputs[1].to_u64() {
+                        let min_expected_gas = 3 * *count as u64; // Minimum for multiple MSTOREs
+                        if gas_used < min_expected_gas {
+                            return Ok(Some(ZkEvmTestResult {
+                                vulnerability_type: ZkEvmVulnerabilityType::GasAccountingError,
+                                description: "Sequential memory expansion gas undercharged"
+                                    .to_string(),
+                                opcode: Some("MSTORE".to_string()),
+                                witness: inputs,
+                                expected_behavior: format!(
+                                    "Gas >= {} for {} expansions",
+                                    min_expected_gas, count
+                                ),
+                                actual_behavior: format!("Gas used: {}", gas_used),
+                                context: HashMap::new(),
+                            }));
                         }
                     }
                 }
