@@ -117,8 +117,12 @@ jobs:
         run: cargo check -p zk-constraints -p zk-symbolic
 
       # Static coverage remains on the validated Ubuntu and Windows runners.
+      # CMAKE_POLICY_VERSION_MINIMUM=3.5 is required on runners with CMake >= 4.0
+      # where the old cmake_minimum_required in z3-sys 0.8.1 is rejected.
       - name: Check solver crates (portable static mode)
         if: matrix.run_static_mode
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
         run: cargo check -p zk-constraints -p zk-symbolic --features z3-static
 
   # Run all tests
