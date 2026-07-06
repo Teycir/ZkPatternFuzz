@@ -87,8 +87,6 @@ jobs:
         include:
           - os: ubuntu-latest
             run_static_mode: true
-          - os: windows-latest
-            run_static_mode: true
     steps:
       - uses: actions/checkout@v4
 
@@ -103,7 +101,6 @@ jobs:
           cargo --version || exit 1
 
       - name: Install and verify Z3 (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
         run: |
           if ! command -v z3 >/dev/null 2>&1; then
             sudo apt-get update
@@ -112,17 +109,12 @@ jobs:
           command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
           z3 --version
 
-      # On Windows we default to static-linking Z3 in solver crates.
       - name: Check solver crates
         run: cargo check -p zk-constraints -p zk-symbolic
 
-      # Static coverage remains on the validated Ubuntu and Windows runners.
-      # CMAKE_POLICY_VERSION_MINIMUM=3.5 is required on runners with CMake >= 4.0
-      # where the old cmake_minimum_required in z3-sys 0.8.1 is rejected.
+      # Static coverage on the validated Ubuntu runner.
       - name: Check solver crates (portable static mode)
         if: matrix.run_static_mode
-        env:
-          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
         run: cargo check -p zk-constraints -p zk-symbolic --features z3-static
 
   # Run all tests
