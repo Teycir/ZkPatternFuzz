@@ -320,7 +320,7 @@ impl OracleCorrelator {
 
             // Primary is highest severity, rest are corroborating
             let mut sorted_findings: Vec<_> = group_findings.into_iter().collect();
-            sorted_findings.sort_by(|a, b| b.severity.cmp(&a.severity));
+            sorted_findings.sort_by_key(|b| std::cmp::Reverse(b.severity));
 
             let primary = sorted_findings.remove(0).clone();
             let corroborating: Vec<_> = sorted_findings.into_iter().cloned().collect();

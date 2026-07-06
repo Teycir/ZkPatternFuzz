@@ -905,7 +905,7 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     let score = ReadinessReport::compute_score(&warnings);
     let ready_for_evidence = ReadinessReport::is_evidence_ready(&warnings);
 
-    warnings.sort_by(|a, b| a.level.cmp(&b.level));
+    warnings.sort_by_key(|a| a.level);
 
     ReadinessReport {
         warnings,
