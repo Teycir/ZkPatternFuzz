@@ -538,8 +538,19 @@ fn run_cairo_prove_verify_smoke_case(
         ));
     }
 
+    let build_dir = match tempfile::Builder::new()
+        .prefix(&format!("zkfuzz_cairo_{case_name}_"))
+        .tempdir()
+    {
+        Ok(dir) => dir,
+        Err(err) => {
+            return MatrixStatus::SkipInfra(format!(
+                "{case_name} failed to create temp build dir: {err}"
+            ))
+        }
+    };
     let mut target = match CairoTarget::new(program_path.to_str().unwrap()) {
-        Ok(target) => target,
+        Ok(target) => target.with_build_dir(build_dir.path().to_path_buf()),
         Err(err) => return classify_error(&format!("{case_name} create target"), err),
     };
     if let Err(err) = target.compile() {
