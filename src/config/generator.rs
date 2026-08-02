@@ -301,20 +301,20 @@ impl ConfigGenerator {
 
         for pattern in patterns {
             match &pattern.pattern_type {
-                PatternType::MerkleTree | PatternType::HashFunction(_) => {
-                    if !deep_attacks.contains(&"collision".to_string()) {
-                        deep_attacks.push("collision".to_string());
-                    }
+                PatternType::MerkleTree | PatternType::HashFunction(_)
+                    if !deep_attacks.contains(&"collision".to_string()) =>
+                {
+                    deep_attacks.push("collision".to_string());
                 }
-                PatternType::RangeCheck => {
-                    if !deep_attacks.contains(&"arithmetic_overflow".to_string()) {
-                        deep_attacks.push("arithmetic_overflow".to_string());
-                    }
+                PatternType::RangeCheck
+                    if !deep_attacks.contains(&"arithmetic_overflow".to_string()) =>
+                {
+                    deep_attacks.push("arithmetic_overflow".to_string());
                 }
-                PatternType::QuantumVulnerablePrimitive => {
-                    if !deep_attacks.contains(&"quantum_resistance".to_string()) {
-                        deep_attacks.push("quantum_resistance".to_string());
-                    }
+                PatternType::QuantumVulnerablePrimitive
+                    if !deep_attacks.contains(&"quantum_resistance".to_string()) =>
+                {
+                    deep_attacks.push("quantum_resistance".to_string());
                 }
                 PatternType::TrustedSetupArtifact
                     if !deep_attacks.contains(&"trusted_setup".to_string()) =>
@@ -482,60 +482,56 @@ impl ConfigGenerator {
 
         for pattern in patterns {
             match &pattern.pattern_type {
-                PatternType::MerkleTree | PatternType::HashFunction(_) => {
+                PatternType::MerkleTree | PatternType::HashFunction(_)
                     if !attacks
                         .iter()
-                        .any(|a| a.attack_type == AttackType::Collision)
-                    {
-                        attacks.push(Attack {
-                            attack_type: AttackType::Collision,
-                            description: "Auto-detected: Hash/Merkle collision testing".to_string(),
-                            plugin: None,
-                            config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
-                        });
-                    }
+                        .any(|a| a.attack_type == AttackType::Collision) =>
+                {
+                    attacks.push(Attack {
+                        attack_type: AttackType::Collision,
+                        description: "Auto-detected: Hash/Merkle collision testing".to_string(),
+                        plugin: None,
+                        config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
+                    });
                 }
-                PatternType::RangeCheck | PatternType::BitDecomposition => {
+                PatternType::RangeCheck | PatternType::BitDecomposition
                     if !attacks
                         .iter()
-                        .any(|a| a.attack_type == AttackType::ArithmeticOverflow)
-                    {
-                        attacks.push(Attack {
-                            attack_type: AttackType::ArithmeticOverflow,
-                            description: "Auto-detected: Arithmetic overflow testing".to_string(),
-                            plugin: None,
-                            config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
-                        });
-                    }
+                        .any(|a| a.attack_type == AttackType::ArithmeticOverflow) =>
+                {
+                    attacks.push(Attack {
+                        attack_type: AttackType::ArithmeticOverflow,
+                        description: "Auto-detected: Arithmetic overflow testing".to_string(),
+                        plugin: None,
+                        config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
+                    });
                 }
-                PatternType::Signature => {
+                PatternType::Signature
                     if !attacks
                         .iter()
-                        .any(|a| a.attack_type == AttackType::Soundness)
-                    {
-                        attacks.push(Attack {
-                            attack_type: AttackType::Soundness,
-                            description: "Auto-detected: Signature forgery testing".to_string(),
-                            plugin: None,
-                            config: serde_yaml::from_str("forge_attempts: 1000").unwrap_or_else(
-                                |_| serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
-                            ),
-                        });
-                    }
+                        .any(|a| a.attack_type == AttackType::Soundness) =>
+                {
+                    attacks.push(Attack {
+                        attack_type: AttackType::Soundness,
+                        description: "Auto-detected: Signature forgery testing".to_string(),
+                        plugin: None,
+                        config: serde_yaml::from_str("forge_attempts: 1000").unwrap_or_else(|_| {
+                            serde_yaml::Value::Mapping(serde_yaml::Mapping::new())
+                        }),
+                    });
                 }
-                PatternType::QuantumVulnerablePrimitive => {
+                PatternType::QuantumVulnerablePrimitive
                     if !attacks
                         .iter()
-                        .any(|a| a.attack_type == AttackType::QuantumResistance)
-                    {
-                        attacks.push(Attack {
-                            attack_type: AttackType::QuantumResistance,
-                            description: "Auto-detected: Quantum-vulnerable primitive source scan"
-                                .to_string(),
-                            plugin: None,
-                            config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
-                        });
-                    }
+                        .any(|a| a.attack_type == AttackType::QuantumResistance) =>
+                {
+                    attacks.push(Attack {
+                        attack_type: AttackType::QuantumResistance,
+                        description: "Auto-detected: Quantum-vulnerable primitive source scan"
+                            .to_string(),
+                        plugin: None,
+                        config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
+                    });
                 }
                 PatternType::TrustedSetupArtifact
                     if !attacks

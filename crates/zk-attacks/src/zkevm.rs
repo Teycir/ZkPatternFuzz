@@ -648,7 +648,8 @@ impl ZkEvmAttack {
             StateTransitionTest::EmptyTransaction
                 if result.success && result.outputs.is_empty() =>
             {
-                // Empty transactions should still update nonce and expose state output.
+                // Empty transactions should still update nonce
+                // Check if nonce was properly incremented (simplified check)
                 return Ok(Some(ZkEvmTestResult {
                     vulnerability_type: ZkEvmVulnerabilityType::StateTransitionMismatch,
                     description: "Empty transaction doesn't update state correctly".to_string(),
@@ -762,12 +763,17 @@ impl ZkEvmAttack {
         full_inputs.extend(inputs.clone());
 
         let result = executor.execute_sync(&full_inputs);
-        let is_division_or_mod_opcode = matches!(opcode.name, "DIV" | "SDIV" | "MOD" | "SMOD");
 
         // Check for boundary violations
         match boundary_case {
-            // Division by max should not panic
-            OpcodeBoundaryCase::MaxU256Values(_) if is_division_or_mod_opcode && !result.success => {
+            OpcodeBoundaryCase::MaxU256Values(_)
+                // Division by max should not panic
+                if (opcode.name == "DIV"
+                    || opcode.name == "SDIV"
+                    || opcode.name == "MOD"
+                    || opcode.name == "SMOD")
+                    && !result.success =>
+            {
                 if let Some(err) = result
                     .error
                     .as_ref()
@@ -784,9 +790,15 @@ impl ZkEvmAttack {
                     }));
                 }
             }
-            // Division by zero should return 0, not error
-            OpcodeBoundaryCase::ZeroValues(_) if is_division_or_mod_opcode => {
+            OpcodeBoundaryCase::ZeroValues(_)
+                // Division by zero should return 0, not error
+                if opcode.name == "DIV"
+                    || opcode.name == "SDIV"
+                    || opcode.name == "MOD"
+                    || opcode.name == "SMOD" =>
+            {
                 if result.success && !result.outputs.is_empty() {
+                    // Should return 0 for division by zero
                     if !result.outputs[0].is_zero() {
                         return Ok(Some(ZkEvmTestResult {
                             vulnerability_type: ZkEvmVulnerabilityType::OpcodeBoundaryViolation,
@@ -801,17 +813,12 @@ impl ZkEvmAttack {
                 } else if !result.success {
                     let err = match result.error {
                         Some(value) => value,
-                        None => {
-                            "Execution failed without backend error message (division/mod by zero)"
-                                .to_string()
-                        }
+                        None => "Execution failed without backend error message (division/mod by zero)"
+                            .to_string(),
                     };
                     return Ok(Some(ZkEvmTestResult {
                         vulnerability_type: ZkEvmVulnerabilityType::OpcodeBoundaryViolation,
-                        description: format!(
-                            "{} errors on zero instead of returning 0",
-                            opcode.name
-                        ),
+                        description: format!("{} errors on zero instead of returning 0", opcode.name),
                         opcode: Some(opcode.name.to_string()),
                         witness: full_inputs,
                         expected_behavior: "Return 0 for division by zero".to_string(),

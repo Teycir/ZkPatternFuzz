@@ -477,13 +477,12 @@ fn proof_status(
             }
             "proof_failed"
         }
-        "run_failed" | "stale_interrupted" => {
-            if reason_code == "wall_clock_timeout" || stage.contains("proof") {
-                "proof_failed"
-            } else {
-                "not_ready"
-            }
+        "run_failed" | "stale_interrupted"
+            if reason_code == "wall_clock_timeout" || stage.contains("proof") =>
+        {
+            "proof_failed"
         }
+        "run_failed" | "stale_interrupted" => "not_ready",
         "no_vulnerability_observed" => "proof_skipped_by_policy",
         _ => "not_ready",
     }
