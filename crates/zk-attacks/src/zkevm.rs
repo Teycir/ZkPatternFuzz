@@ -645,40 +645,35 @@ impl ZkEvmAttack {
 
         // Check for state transition anomalies
         match test_case {
-            StateTransitionTest::EmptyTransaction => {
+            StateTransitionTest::EmptyTransaction
+                if result.success && result.outputs.is_empty() =>
+            {
                 // Empty transactions should still update nonce
-                if result.success {
-                    // Check if nonce was properly incremented (simplified check)
-                    if result.outputs.is_empty() {
+                // Check if nonce was properly incremented (simplified check)
+                return Ok(Some(ZkEvmTestResult {
+                    vulnerability_type: ZkEvmVulnerabilityType::StateTransitionMismatch,
+                    description: "Empty transaction doesn't update state correctly".to_string(),
+                    opcode: None,
+                    witness: inputs.clone(),
+                    expected_behavior: "Nonce increment, gas deduction".to_string(),
+                    actual_behavior: "No state change detected".to_string(),
+                    context: HashMap::new(),
+                }));
+            }
+            StateTransitionTest::MaxGasTransaction if !result.success => {
+                // Should handle max gas gracefully
+                if let Some(ref err) = result.error {
+                    if !err.contains("out of gas") {
                         return Ok(Some(ZkEvmTestResult {
-                            vulnerability_type: ZkEvmVulnerabilityType::StateTransitionMismatch,
-                            description: "Empty transaction doesn't update state correctly"
-                                .to_string(),
+                            vulnerability_type: ZkEvmVulnerabilityType::GasAccountingError,
+                            description: format!("Unexpected error with max gas: {}", err),
                             opcode: None,
                             witness: inputs.clone(),
-                            expected_behavior: "Nonce increment, gas deduction".to_string(),
-                            actual_behavior: "No state change detected".to_string(),
+                            expected_behavior: "Gas limit enforcement or successful execution"
+                                .to_string(),
+                            actual_behavior: format!("Error: {}", err),
                             context: HashMap::new(),
                         }));
-                    }
-                }
-            }
-            StateTransitionTest::MaxGasTransaction => {
-                // Should handle max gas gracefully
-                if !result.success {
-                    if let Some(ref err) = result.error {
-                        if !err.contains("out of gas") {
-                            return Ok(Some(ZkEvmTestResult {
-                                vulnerability_type: ZkEvmVulnerabilityType::GasAccountingError,
-                                description: format!("Unexpected error with max gas: {}", err),
-                                opcode: None,
-                                witness: inputs.clone(),
-                                expected_behavior: "Gas limit enforcement or successful execution"
-                                    .to_string(),
-                                actual_behavior: format!("Error: {}", err),
-                                context: HashMap::new(),
-                            }));
-                        }
                     }
                 }
             }
@@ -771,72 +766,65 @@ impl ZkEvmAttack {
 
         // Check for boundary violations
         match boundary_case {
-            OpcodeBoundaryCase::MaxU256Values(_) => {
+            OpcodeBoundaryCase::MaxU256Values(_)
                 // Division by max should not panic
                 if (opcode.name == "DIV"
                     || opcode.name == "SDIV"
                     || opcode.name == "MOD"
                     || opcode.name == "SMOD")
-                    && !result.success
+                    && !result.success =>
+            {
+                if let Some(err) = result
+                    .error
+                    .as_ref()
+                    .filter(|err| err.contains("panic") || err.contains("overflow"))
                 {
-                    if let Some(err) = result
-                        .error
-                        .as_ref()
-                        .filter(|err| err.contains("panic") || err.contains("overflow"))
-                    {
-                        return Ok(Some(ZkEvmTestResult {
-                            vulnerability_type: ZkEvmVulnerabilityType::OpcodeBoundaryViolation,
-                            description: format!("{} fails with max values", opcode.name),
-                            opcode: Some(opcode.name.to_string()),
-                            witness: full_inputs,
-                            expected_behavior: "Graceful handling of max U256 values".to_string(),
-                            actual_behavior: format!("Error: {}", err),
-                            context: HashMap::new(),
-                        }));
-                    }
+                    return Ok(Some(ZkEvmTestResult {
+                        vulnerability_type: ZkEvmVulnerabilityType::OpcodeBoundaryViolation,
+                        description: format!("{} fails with max values", opcode.name),
+                        opcode: Some(opcode.name.to_string()),
+                        witness: full_inputs,
+                        expected_behavior: "Graceful handling of max U256 values".to_string(),
+                        actual_behavior: format!("Error: {}", err),
+                        context: HashMap::new(),
+                    }));
                 }
             }
-            OpcodeBoundaryCase::ZeroValues(_) => {
+            OpcodeBoundaryCase::ZeroValues(_)
                 // Division by zero should return 0, not error
                 if opcode.name == "DIV"
                     || opcode.name == "SDIV"
                     || opcode.name == "MOD"
-                    || opcode.name == "SMOD"
-                {
-                    if result.success && !result.outputs.is_empty() {
-                        // Should return 0 for division by zero
-                        if !result.outputs[0].is_zero() {
-                            return Ok(Some(ZkEvmTestResult {
-                                vulnerability_type: ZkEvmVulnerabilityType::OpcodeBoundaryViolation,
-                                description: format!("{} with zero doesn't return 0", opcode.name),
-                                opcode: Some(opcode.name.to_string()),
-                                witness: full_inputs,
-                                expected_behavior: "Return 0 for division by zero".to_string(),
-                                actual_behavior: format!("Returned: {:?}", result.outputs[0]),
-                                context: HashMap::new(),
-                            }));
-                        }
-                    } else if !result.success {
-                        let err = match result.error {
-                            Some(value) => value,
-                            None => {
-                                "Execution failed without backend error message (division/mod by zero)"
-                                    .to_string()
-                            }
-                        };
+                    || opcode.name == "SMOD" =>
+            {
+                if result.success && !result.outputs.is_empty() {
+                    // Should return 0 for division by zero
+                    if !result.outputs[0].is_zero() {
                         return Ok(Some(ZkEvmTestResult {
                             vulnerability_type: ZkEvmVulnerabilityType::OpcodeBoundaryViolation,
-                            description: format!(
-                                "{} errors on zero instead of returning 0",
-                                opcode.name
-                            ),
+                            description: format!("{} with zero doesn't return 0", opcode.name),
                             opcode: Some(opcode.name.to_string()),
                             witness: full_inputs,
                             expected_behavior: "Return 0 for division by zero".to_string(),
-                            actual_behavior: format!("Error: {}", err),
+                            actual_behavior: format!("Returned: {:?}", result.outputs[0]),
                             context: HashMap::new(),
                         }));
                     }
+                } else if !result.success {
+                    let err = match result.error {
+                        Some(value) => value,
+                        None => "Execution failed without backend error message (division/mod by zero)"
+                            .to_string(),
+                    };
+                    return Ok(Some(ZkEvmTestResult {
+                        vulnerability_type: ZkEvmVulnerabilityType::OpcodeBoundaryViolation,
+                        description: format!("{} errors on zero instead of returning 0", opcode.name),
+                        opcode: Some(opcode.name.to_string()),
+                        witness: full_inputs,
+                        expected_behavior: "Return 0 for division by zero".to_string(),
+                        actual_behavior: format!("Error: {}", err),
+                        context: HashMap::new(),
+                    }));
                 }
             }
             OpcodeBoundaryCase::SignedEdge(_)
@@ -908,29 +896,26 @@ impl ZkEvmAttack {
         let result = executor.execute_sync(&inputs);
 
         match test_case {
-            MemoryExpansionTest::LargeOffset(offset) => {
+            MemoryExpansionTest::LargeOffset(offset) if !result.success => {
                 // Large offsets should fail gracefully (out of gas), not panic
-                if !result.success {
-                    if let Some(ref err) = result.error {
-                        if !err.contains("gas") && !err.contains("memory") {
-                            return Ok(Some(ZkEvmTestResult {
-                                vulnerability_type: ZkEvmVulnerabilityType::MemoryExpansionError,
-                                description: format!(
-                                    "Large memory offset {} causes unexpected error",
-                                    offset
-                                ),
-                                opcode: Some("MSTORE".to_string()),
-                                witness: inputs,
-                                expected_behavior: "Out of gas error for excessive memory"
-                                    .to_string(),
-                                actual_behavior: format!("Error: {}", err),
-                                context: {
-                                    let mut ctx = HashMap::new();
-                                    ctx.insert("offset".to_string(), offset.to_string());
-                                    ctx
-                                },
-                            }));
-                        }
+                if let Some(ref err) = result.error {
+                    if !err.contains("gas") && !err.contains("memory") {
+                        return Ok(Some(ZkEvmTestResult {
+                            vulnerability_type: ZkEvmVulnerabilityType::MemoryExpansionError,
+                            description: format!(
+                                "Large memory offset {} causes unexpected error",
+                                offset
+                            ),
+                            opcode: Some("MSTORE".to_string()),
+                            witness: inputs,
+                            expected_behavior: "Out of gas error for excessive memory".to_string(),
+                            actual_behavior: format!("Error: {}", err),
+                            context: {
+                                let mut ctx = HashMap::new();
+                                ctx.insert("offset".to_string(), offset.to_string());
+                                ctx
+                            },
+                        }));
                     }
                 }
             }

@@ -121,14 +121,11 @@ impl StructureAwareMutator {
             return None;
         }
 
-        let (prefix, remainder) = if let Some(rest) = without_comment.strip_prefix("signal input") {
-            ("signal input", rest)
-        } else if let Some(rest) = without_comment.strip_prefix("signal private input") {
-            ("signal private input", rest)
+        let remainder = if let Some(rest) = without_comment.strip_prefix("signal input") {
+            rest
         } else {
-            return None;
+            without_comment.strip_prefix("signal private input")?
         };
-        let _ = prefix;
 
         let declaration = remainder.trim().trim_end_matches(';').trim();
         if declaration.is_empty() {

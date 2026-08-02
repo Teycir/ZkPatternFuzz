@@ -5,7 +5,7 @@
 
   <p>
     <a href="https://github.com/Teycir/ZkPatternFuzz/actions/workflows/ci.yml"><img src="https://github.com/Teycir/ZkPatternFuzz/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSL-green.svg" alt="License" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" /></a>
     <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-2021-orange.svg?logo=rust" alt="Rust 2021" /></a>
   </p>
 </div>
@@ -392,7 +392,7 @@ Contact: `teycir@pxdmail.net`
 
 ## License
 
-Business Source License 1.1. See [LICENSE](LICENSE) for details. The license converts to GPL-3.0 after four years.
+MIT License. See [LICENSE](LICENSE) for details.
 
 ## Citation
 
